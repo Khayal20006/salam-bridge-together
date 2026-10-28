@@ -50,7 +50,7 @@ export default function SnakeGame() {
     init();
 
     startRef.current = () => {
-      me = mk(name.trim() || "Sən", false); me.hue = 150; snakes.push(me); playing = true; setScore(10); setState("play");
+      me = mk(nameRef.current.trim() || "Sən", false); me.hue = 150; snakes.push(me); playing = true; setScore(10); setState("play");
     };
 
     const kill = (s: Snake) => {
