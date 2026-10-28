@@ -41,9 +41,31 @@ export default function SnakeGame() {
       const pts = Array.from({ length: 12 }, (_, i) => ({ x: p.x - Math.cos(a) * i * SEG, y: p.y - Math.sin(a) * i * SEG }));
       return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 120) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0 };
     };
+    // pre-rendered glowing food sprites (one per hue bucket) -> drawImage is far cheaper than arcs + string colors
+    const SPR = Array.from({ length: 24 }, (_, i) => {
+      const s = document.createElement("canvas"); s.width = s.height = 64; const g = s.getContext("2d")!;
+      const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, `hsla(${i * 15},100%,85%,1)`); gr.addColorStop(0.32, `hsla(${i * 15},100%,65%,1)`);
+      gr.addColorStop(0.42, `hsla(${i * 15},100%,60%,0.35)`); gr.addColorStop(1, `hsla(${i * 15},100%,60%,0)`);
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return s;
+    });
+    // cached name labels (emoji text rendering is slow)
+    const labels = new Map<string, HTMLCanvasElement>();
+    const label = (txt: string, color: string) => {
+      const key = color + txt; let l = labels.get(key);
+      if (!l) {
+        l = document.createElement("canvas"); const g = l.getContext("2d")!; g.font = "600 13px Space Grotesk, sans-serif";
+        const w = Math.ceil(g.measureText(txt).width) + 8; l.width = w * 2; l.height = 40;
+        const g2 = l.getContext("2d")!; g2.scale(2, 2); g2.font = "600 13px Space Grotesk, sans-serif"; g2.fillStyle = color; g2.textBaseline = "middle"; g2.fillText(txt, 4, 10);
+        labels.set(key, l); if (labels.size > 200) labels.delete(labels.keys().next().value);
+      }
+      return l;
+    };
+    const MAX_FOOD = 1300;
     const addFood = (x?: number, y?: number, v = 1) => {
       const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
-      foods.push({ ...p, r: 3 + v * 2, hue: rnd(0, 360), v });
+      const f = { ...p, r: 3 + v * 2, hue: Math.floor(rnd(0, 24)), v };
+      if (foods.length >= MAX_FOOD) foods[Math.floor(Math.random() * foods.length)] = f; else foods.push(f);
     };
     const init = () => {
       snakes = []; foods = [];
@@ -90,7 +112,8 @@ export default function SnakeGame() {
     addEventListener("pointermove", onMove); addEventListener("pointerdown", onDown); addEventListener("pointerup", onUp);
     addEventListener("keydown", onKey); addEventListener("keyup", onKey);
 
-    let last = performance.now(), hudT = 0;
+    let last = performance.now(), hudT = 0, lbT = 0;
+    const lb = document.createElement("canvas");
     const loop = (now: number) => {
       const dt = Math.min(3, (now - last) / 16.67); last = now;
       for (const [k, r] of remotes) if (now - (r.seen || 0) > 2500) remotes.delete(k);
@@ -168,7 +191,7 @@ export default function SnakeGame() {
       }
       snakes = snakes.filter((s) => s.alive);
       all = [...snakes, ...remotes.values()];
-      if (me && me.alive && (sendT += dt) > 2) {
+      if (me && me.alive && (sendT += dt) > 3) {
         sendT = 0; const p: number[] = [];
         for (let i = 0; i < me.pts.length; i += 2) p.push(Math.round(me.pts[i].x), Math.round(me.pts[i].y));
         ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, p } });
@@ -193,47 +216,49 @@ export default function SnakeGame() {
       for (let y = Math.floor((cam.y - vh) / g) * g; y < cam.y + vh; y += g) { ctx.moveTo(cam.x - vw, y); ctx.lineTo(cam.x + vw, y); }
       ctx.stroke();
       ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(0, 0, WORLD, 0, 7); ctx.stroke();
-      // food
-      ctx.globalCompositeOperation = "lighter";
+      // food (sprites)
+      const ps = now / 300;
       for (const f of foods) {
         if (Math.abs(f.x - cam.x) > vw || Math.abs(f.y - cam.y) > vh) continue;
-        const pulse = 1 + Math.sin(now / 300 + f.x) * 0.2;
-        ctx.fillStyle = `hsla(${f.hue},100%,60%,0.25)`; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 2.4 * pulse, 0, 7); ctx.fill();
-        ctx.fillStyle = `hsl(${f.hue},100%,70%)`; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+        const sz = f.r * 2.5 * (1 + Math.sin(ps + f.x) * 0.15);
+        ctx.drawImage(SPR[f.hue], f.x - sz, f.y - sz, sz * 2, sz * 2);
       }
-      ctx.globalCompositeOperation = "source-over";
       // snakes
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
       for (const s of all) {
         const w = width(s), h = s.pts[0];
         if (Math.abs(h.x - cam.x) > vw + s.pts.length * SEG || Math.abs(h.y - cam.y) > vh + s.pts.length * SEG) continue;
-        // fast body: one thick round polyline instead of hundreds of circles (no shadowBlur)
+        // one path, two cheap strokes (no dashes, no shadowBlur)
         ctx.beginPath(); ctx.moveTo(s.pts[s.pts.length - 1].x, s.pts[s.pts.length - 1].y);
         for (let i = s.pts.length - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-        ctx.lineCap = "round"; ctx.lineJoin = "round";
-        if (s.boost) { ctx.strokeStyle = `hsla(${s.hue},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
-        ctx.strokeStyle = `hsl(${s.hue},90%,45%)`; ctx.lineWidth = w * 2; ctx.stroke();
-        ctx.setLineDash([SEG * 3, SEG * 3]); ctx.strokeStyle = `hsl(${s.hue},90%,55%)`; ctx.lineWidth = w * 1.5; ctx.stroke(); ctx.setLineDash([]);
+        if (s.boost) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
+        ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
         // eyes
         for (const side of [-1, 1]) {
           const ex = h.x + Math.cos(s.angle + side * 0.6) * w * 0.6, ey = h.y + Math.sin(s.angle + side * 0.6) * w * 0.6;
           ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, w * 0.38, 0, 7); ctx.fill();
           ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
         }
-        ctx.font = "600 13px Space Grotesk, sans-serif"; ctx.textAlign = "center";
-        ctx.fillStyle = s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a";
-        ctx.fillText(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, h.x, h.y - w - 12);
+        const L = label(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a");
+        ctx.drawImage(L, h.x - L.width / 4, h.y - w - 22, L.width / 2, L.height / 2);
       }
-      // HUD: leaderboard + minimap
+      // HUD: leaderboard (redrawn ~4x/sec into a cached canvas) + minimap
       ctx.setTransform(d, 0, 0, d, 0, 0);
-      const top = [...all].sort((a, b) => b.len - a.len).slice(0, 10);
-      ctx.fillStyle = "rgba(10,14,30,0.55)"; ctx.fillRect(innerWidth - 210, 16, 194, 28 + top.length * 20);
-      ctx.font = "700 13px Space Grotesk, sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "#7cf";
-      ctx.fillText("LİDERLƏR", innerWidth - 196, 36);
-      top.forEach((s, i) => {
-        ctx.fillStyle = s === me ? "#5f8" : s.bot ? "rgba(180,190,210,0.7)" : "#ffd84a"; ctx.font = "500 12px Space Grotesk, sans-serif";
-        ctx.fillText(`${i + 1}. ${s.bot ? "🤖 " : "👤 "}${s.name}`, innerWidth - 196, 58 + i * 20);
-        ctx.textAlign = "right"; ctx.fillText(String(Math.floor(s.len * 10)), innerWidth - 26, 58 + i * 20); ctx.textAlign = "left";
-      });
+      if ((lbT -= dt) <= 0) {
+        lbT = 15;
+        const top = [...all].sort((a, b) => b.len - a.len).slice(0, 10);
+        lb.width = 194 * d; lb.height = (28 + top.length * 20) * d; const g = lb.getContext("2d")!; g.scale(d, d);
+        g.fillStyle = "rgba(10,14,30,0.55)"; g.fillRect(0, 0, 194, 28 + top.length * 20);
+        g.font = "700 13px Space Grotesk, sans-serif"; g.fillStyle = "#7cf"; g.fillText("LİDERLƏR", 14, 20);
+        g.font = "500 12px Space Grotesk, sans-serif";
+        top.forEach((s, i) => {
+          g.fillStyle = s === me ? "#5f8" : s.bot ? "rgba(180,190,210,0.7)" : "#ffd84a"; g.textAlign = "left";
+          g.fillText(`${i + 1}. ${s.bot ? "🤖 " : "👤 "}${s.name}`, 14, 42 + i * 20);
+          g.textAlign = "right"; g.fillText(String(Math.floor(s.len * 10)), 184, 42 + i * 20);
+        });
+      }
+      ctx.drawImage(lb, innerWidth - 210, 16, lb.width / d, lb.height / d);
       const mr = 60, mx = innerWidth - 80, my = innerHeight - 80;
       ctx.fillStyle = "rgba(10,14,30,0.6)"; ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fill();
       ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 2; ctx.stroke();
