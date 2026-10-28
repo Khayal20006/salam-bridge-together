@@ -1,10 +1,11 @@
 // @ts-nocheck -- performance-critical canvas loop with array indexing
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 type P = { x: number; y: number };
 type Snake = {
   id: number; name: string; pts: P[]; angle: number; target: number;
-  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number;
+  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; seen?: number;
 };
 type Food = { x: number; y: number; r: number; hue: number; v: number };
 
@@ -20,6 +21,7 @@ export default function SnakeGame() {
   const [state, setState] = useState<"menu" | "play" | "dead">("menu");
   const [name, setName] = useState("");
   const [score, setScore] = useState(0);
+  const [online, setOnline] = useState(1);
   const startRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -50,6 +52,25 @@ export default function SnakeGame() {
     };
     init();
 
+    // --- multiplayer (realtime broadcast) ---
+    const myKey = Math.random().toString(36).slice(2, 10);
+    const remotes = new Map<string, Snake>();
+    const ch = supabase.channel("neon-arena", { config: { broadcast: { self: false }, presence: { key: myKey } } });
+    ch.on("broadcast", { event: "s" }, ({ payload: m }) => {
+      let r = remotes.get(m.k);
+      const pts: P[] = []; for (let i = 0; i < m.p.length; i += 2) pts.push({ x: m.p[i], y: m.p[i + 1] });
+      if (!r) { r = { id: -1, name: m.n, pts, angle: m.a, target: m.a, len: m.l, hue: m.h, alive: true, bot: false, boost: m.b, think: 0, remote: true }; remotes.set(m.k, r); }
+      r.name = m.n; r.pts = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.seen = performance.now();
+    });
+    ch.on("broadcast", { event: "d" }, ({ payload: m }) => {
+      const r = remotes.get(m.k); if (!r) return;
+      for (let i = 0; i < r.pts.length; i++) addFood(r.pts[i].x, r.pts[i].y, 1 + Math.min(3, r.len / 80));
+      remotes.delete(m.k);
+    });
+    ch.on("presence", { event: "sync" }, () => setOnline(Object.keys(ch.presenceState()).length || 1));
+    ch.subscribe((st) => { if (st === "SUBSCRIBED") ch.track({ at: Date.now() }); });
+    let sendT = 0;
+
     startRef.current = () => {
       me = mk(nameRef.current.trim() || "Sən", false); me.hue = 150; snakes.push(me); playing = true; setScore(10); setState("play");
     };
@@ -57,7 +78,7 @@ export default function SnakeGame() {
     const kill = (s: Snake) => {
       s.alive = false;
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, 1 + Math.min(3, s.len / 80));
-      if (s === me) { playing = false; setState("dead"); }
+      if (s === me) { playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
     };
 
     const onMove = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
@@ -69,6 +90,8 @@ export default function SnakeGame() {
     let last = performance.now(), hudT = 0;
     const loop = (now: number) => {
       const dt = Math.min(3, (now - last) / 16.67); last = now;
+      for (const [k, r] of remotes) if (now - (r.seen || 0) > 2500) remotes.delete(k);
+      let all = [...snakes, ...remotes.values()];
       // control
       for (const s of snakes) {
         if (!s.alive) continue;
@@ -82,7 +105,7 @@ export default function SnakeGame() {
           for (const f of foods) { const d = (f.x - h.x) ** 2 + (f.y - h.y) ** 2; if (d < bd && d < 160000) { bd = d; best = f; } }
           s.target = best ? Math.atan2(best.y - h.y, best.x - h.x) : s.target + rnd(-1, 1);
           // avoid others
-          for (const o of snakes) {
+          for (const o of all) {
             if (o === s || !o.alive) continue;
             for (let i = 0; i < o.pts.length; i += 3) {
               const p = o.pts[i]; const d = (p.x - h.x) ** 2 + (p.y - h.y) ** 2;
@@ -119,7 +142,7 @@ export default function SnakeGame() {
       // collide
       for (const s of snakes) {
         if (!s.alive) continue; const h = s.pts[0], w = width(s);
-        for (const o of snakes) {
+        for (const o of all) {
           if (o === s || !o.alive) continue; const ow = width(o);
           const oh = o.pts[0]; if ((oh.x - h.x) ** 2 + (oh.y - h.y) ** 2 > (o.pts.length * SEG + 100) ** 2) continue;
           for (let i = 1; i < o.pts.length; i++) {
@@ -129,6 +152,12 @@ export default function SnakeGame() {
         }
       }
       snakes = snakes.filter((s) => s.alive);
+      all = [...snakes, ...remotes.values()];
+      if (me && me.alive && (sendT += dt) > 3) {
+        sendT = 0; const p: number[] = [];
+        for (let i = 0; i < me.pts.length; i += 2) p.push(Math.round(me.pts[i].x), Math.round(me.pts[i].y));
+        ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, p } });
+      }
       while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
       while (foods.length < 900) addFood();
 
@@ -159,7 +188,7 @@ export default function SnakeGame() {
       }
       ctx.globalCompositeOperation = "source-over";
       // snakes
-      for (const s of snakes) {
+      for (const s of all) {
         const w = width(s), h = s.pts[0];
         if (Math.abs(h.x - cam.x) > vw + s.pts.length * SEG || Math.abs(h.y - cam.y) > vh + s.pts.length * SEG) continue;
         if (s.boost) { ctx.shadowColor = `hsl(${s.hue},100%,60%)`; ctx.shadowBlur = 25; }
@@ -174,31 +203,32 @@ export default function SnakeGame() {
           ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, w * 0.38, 0, 7); ctx.fill();
           ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
         }
-        ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "600 13px Space Grotesk, sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(s.name, h.x, h.y - w - 12);
+        ctx.font = "600 13px Space Grotesk, sans-serif"; ctx.textAlign = "center";
+        ctx.fillStyle = s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a";
+        ctx.fillText(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, h.x, h.y - w - 12);
       }
       // HUD: leaderboard + minimap
       ctx.setTransform(d, 0, 0, d, 0, 0);
-      const top = [...snakes].sort((a, b) => b.len - a.len).slice(0, 10);
+      const top = [...all].sort((a, b) => b.len - a.len).slice(0, 10);
       ctx.fillStyle = "rgba(10,14,30,0.55)"; ctx.fillRect(innerWidth - 210, 16, 194, 28 + top.length * 20);
       ctx.font = "700 13px Space Grotesk, sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "#7cf";
       ctx.fillText("LİDERLƏR", innerWidth - 196, 36);
       top.forEach((s, i) => {
-        ctx.fillStyle = s === me ? "#5f8" : "rgba(255,255,255,0.8)"; ctx.font = "500 12px Space Grotesk, sans-serif";
-        ctx.fillText(`${i + 1}. ${s.name}`, innerWidth - 196, 58 + i * 20);
+        ctx.fillStyle = s === me ? "#5f8" : s.bot ? "rgba(180,190,210,0.7)" : "#ffd84a"; ctx.font = "500 12px Space Grotesk, sans-serif";
+        ctx.fillText(`${i + 1}. ${s.bot ? "🤖 " : "👤 "}${s.name}`, innerWidth - 196, 58 + i * 20);
         ctx.textAlign = "right"; ctx.fillText(String(Math.floor(s.len * 10)), innerWidth - 26, 58 + i * 20); ctx.textAlign = "left";
       });
       const mr = 60, mx = innerWidth - 80, my = innerHeight - 80;
       ctx.fillStyle = "rgba(10,14,30,0.6)"; ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fill();
       ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 2; ctx.stroke();
-      for (const s of snakes) { ctx.fillStyle = s === me ? "#5f8" : `hsla(${s.hue},90%,60%,0.7)`; ctx.beginPath(); ctx.arc(mx + (s.pts[0].x / WORLD) * mr, my + (s.pts[0].y / WORLD) * mr, s === me ? 3.5 : 2, 0, 7); ctx.fill(); }
+      for (const s of all) { ctx.fillStyle = s === me ? "#5f8" : `hsla(${s.hue},90%,60%,0.7)`; ctx.beginPath(); ctx.arc(mx + (s.pts[0].x / WORLD) * mr, my + (s.pts[0].y / WORLD) * mr, s === me ? 3.5 : 2, 0, 7); ctx.fill(); }
 
       if (me && playing && (hudT += dt) > 10) { hudT = 0; setScore(Math.floor(me.len * 10)); }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => {
-      cancelAnimationFrame(raf); removeEventListener("resize", resize); removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(raf); supabase.removeChannel(ch); removeEventListener("resize", resize); removeEventListener("pointermove", onMove);
       removeEventListener("pointerdown", onDown); removeEventListener("pointerup", onUp); removeEventListener("keydown", onKey); removeEventListener("keyup", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,6 +239,9 @@ export default function SnakeGame() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
       <canvas ref={cvs} className="block touch-none" />
+      <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
+        🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
+      </div>
       {state === "play" && (
         <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/60 px-4 py-2 font-display text-foreground backdrop-blur">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Uzunluq</div>
