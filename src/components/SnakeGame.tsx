@@ -33,7 +33,7 @@ export default function SnakeGame() {
     const css = getComputedStyle(document.documentElement);
     const bg = css.getPropertyValue("--game-bg").trim() || "#0b0f1a";
 
-    const resize = () => { const d = devicePixelRatio || 1; c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; };
+    const resize = () => { const d = Math.min(1.5, devicePixelRatio || 1); c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; };
     resize(); addEventListener("resize", resize);
 
     const mk = (nm: string, bot: boolean): Snake => {
@@ -182,7 +182,7 @@ export default function SnakeGame() {
       const tz = me && me.alive ? Math.max(0.55, 1.1 - me.len / 1500) : 0.7; cam.z += (tz - cam.z) * 0.03;
 
       // draw
-      const d = devicePixelRatio || 1;
+      const d = Math.min(1.5, devicePixelRatio || 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
       ctx.setTransform(d * cam.z, 0, 0, d * cam.z, (innerWidth / 2) * d - cam.x * cam.z * d, (innerHeight / 2) * d - cam.y * cam.z * d);
       const vw = innerWidth / cam.z / 2 + 60, vh = innerHeight / cam.z / 2 + 60;
@@ -206,12 +206,13 @@ export default function SnakeGame() {
       for (const s of all) {
         const w = width(s), h = s.pts[0];
         if (Math.abs(h.x - cam.x) > vw + s.pts.length * SEG || Math.abs(h.y - cam.y) > vh + s.pts.length * SEG) continue;
-        if (s.boost) { ctx.shadowColor = `hsl(${s.hue},100%,60%)`; ctx.shadowBlur = 25; }
-        for (let i = s.pts.length - 1; i >= 0; i--) {
-          const p = s.pts[i]; const l = 45 + ((i % 6) < 3 ? 10 : 0);
-          ctx.fillStyle = `hsl(${s.hue},90%,${l}%)`; ctx.beginPath(); ctx.arc(p.x, p.y, w, 0, 7); ctx.fill();
-        }
-        ctx.shadowBlur = 0;
+        // fast body: one thick round polyline instead of hundreds of circles (no shadowBlur)
+        ctx.beginPath(); ctx.moveTo(s.pts[s.pts.length - 1].x, s.pts[s.pts.length - 1].y);
+        for (let i = s.pts.length - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        if (s.boost) { ctx.strokeStyle = `hsla(${s.hue},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        ctx.strokeStyle = `hsl(${s.hue},90%,45%)`; ctx.lineWidth = w * 2; ctx.stroke();
+        ctx.setLineDash([SEG * 3, SEG * 3]); ctx.strokeStyle = `hsl(${s.hue},90%,55%)`; ctx.lineWidth = w * 1.5; ctx.stroke(); ctx.setLineDash([]);
         // eyes
         for (const side of [-1, 1]) {
           const ex = h.x + Math.cos(s.angle + side * 0.6) * w * 0.6, ey = h.y + Math.sin(s.angle + side * 0.6) * w * 0.6;
