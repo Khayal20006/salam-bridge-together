@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 type P = { x: number; y: number };
 type Snake = {
   id: number; name: string; pts: P[]; angle: number; target: number;
-  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; seen?: number;
+  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; seen?: number; tgt?: P[];
 };
 type Food = { x: number; y: number; r: number; hue: number; v: number };
 
@@ -60,7 +60,10 @@ export default function SnakeGame() {
       let r = remotes.get(m.k);
       const pts: P[] = []; for (let i = 0; i < m.p.length; i += 2) pts.push({ x: m.p[i], y: m.p[i + 1] });
       if (!r) { r = { id: -1, name: m.n, pts, angle: m.a, target: m.a, len: m.l, hue: m.h, alive: true, bot: false, boost: m.b, think: 0, remote: true }; remotes.set(m.k, r); }
-      r.name = m.n; r.pts = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.seen = performance.now();
+      r.name = m.n;
+      if (!r.tgt || Math.abs(r.pts.length - pts.length) > 4) r.pts = pts.map((q) => ({ ...q }));
+      else { while (r.pts.length < pts.length) r.pts.push({ ...r.pts[r.pts.length - 1] }); r.pts.length = pts.length; }
+      r.tgt = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.seen = performance.now();
     });
     ch.on("broadcast", { event: "d" }, ({ payload: m }) => {
       const r = remotes.get(m.k); if (!r) return;
@@ -91,6 +94,18 @@ export default function SnakeGame() {
     const loop = (now: number) => {
       const dt = Math.min(3, (now - last) / 16.67); last = now;
       for (const [k, r] of remotes) if (now - (r.seen || 0) > 2500) remotes.delete(k);
+      // smooth remote players: predict forward + interpolate
+      for (const r of remotes.values()) {
+        if (!r.tgt) continue;
+        const age = Math.min(0.2, (now - (r.seen || now)) / 1000);
+        const sp = (r.boost ? BOOST : SPEED) * 60 * age;
+        const ox = Math.cos(r.angle) * sp, oy = Math.sin(r.angle) * sp;
+        const k = 1 - Math.pow(0.6, dt);
+        for (let i = 0; i < r.pts.length; i++) {
+          const t = r.tgt[i] || r.tgt[r.tgt.length - 1], f = 1 - i / r.pts.length;
+          r.pts[i].x += (t.x + ox * f - r.pts[i].x) * k; r.pts[i].y += (t.y + oy * f - r.pts[i].y) * k;
+        }
+      }
       let all = [...snakes, ...remotes.values()];
       // control
       for (const s of snakes) {
@@ -153,7 +168,7 @@ export default function SnakeGame() {
       }
       snakes = snakes.filter((s) => s.alive);
       all = [...snakes, ...remotes.values()];
-      if (me && me.alive && (sendT += dt) > 3) {
+      if (me && me.alive && (sendT += dt) > 2) {
         sendT = 0; const p: number[] = [];
         for (let i = 0; i < me.pts.length; i += 2) p.push(Math.round(me.pts[i].x), Math.round(me.pts[i].y));
         ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, p } });
