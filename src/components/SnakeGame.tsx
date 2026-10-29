@@ -205,7 +205,7 @@ export default function SnakeGame() {
       // camera
       const focus = me && me.alive ? me.pts[0] : cam;
       cam.x += (focus.x - cam.x) * 0.15; cam.y += (focus.y - cam.y) * 0.15;
-      const tz = me && me.alive ? Math.max(0.55, 1.1 - me.len / 1500) : 0.7; cam.z += (tz - cam.z) * 0.03;
+      const tz = me && me.alive ? Math.max(0.5, 1.15 - width(me) / 70) : 0.7; cam.z += (tz - cam.z) * 0.03;
 
       // draw
       const d = Math.min(1.5, devicePixelRatio || 1);
