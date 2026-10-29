@@ -249,7 +249,7 @@ export default function SnakeGame() {
         // one path, two cheap strokes (no dashes, no shadowBlur)
         ctx.beginPath(); ctx.moveTo(s.pts[s.pts.length - 1].x, s.pts[s.pts.length - 1].y);
         for (let i = s.pts.length - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-        if (s.boost) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        if (s.boost && C.boostFx) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
         ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
         ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
         // eyes
