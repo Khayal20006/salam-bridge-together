@@ -171,7 +171,7 @@ export default function SnakeGame() {
         let d = s.target - s.angle; d = Math.atan2(Math.sin(d), Math.cos(d));
         s.angle += Math.max(-TURN, Math.min(TURN, d)) * dt;
         const sp = (s.boost ? BOOST : SPEED) * dt;
-        if (s.boost && C.boostFx) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
+        if (s.boost) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
         const nh = { x: h.x + Math.cos(s.angle) * sp, y: h.y + Math.sin(s.angle) * sp };
         s.pts[0] = nh;
         for (let i = 1; i < s.pts.length; i++) {
@@ -249,7 +249,7 @@ export default function SnakeGame() {
         // one path, two cheap strokes (no dashes, no shadowBlur)
         ctx.beginPath(); ctx.moveTo(s.pts[s.pts.length - 1].x, s.pts[s.pts.length - 1].y);
         for (let i = s.pts.length - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-        if (s.boost) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        if (s.boost && C.boostFx) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
         ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
         ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
         // eyes
