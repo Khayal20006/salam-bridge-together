@@ -171,7 +171,7 @@ export default function SnakeGame() {
         let d = s.target - s.angle; d = Math.atan2(Math.sin(d), Math.cos(d));
         s.angle += Math.max(-TURN, Math.min(TURN, d)) * dt;
         const sp = (s.boost ? BOOST : SPEED) * dt;
-        if (s.boost && C.boostFx) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
+        if (s.boost) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
         const nh = { x: h.x + Math.cos(s.angle) * sp, y: h.y + Math.sin(s.angle) * sp };
         s.pts[0] = nh;
         for (let i = 1; i < s.pts.length; i++) {
