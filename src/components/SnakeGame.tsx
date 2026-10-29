@@ -9,12 +9,12 @@ type Snake = {
 };
 type Food = { x: number; y: number; r: number; hue: number; v: number };
 
-const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 5.2, TURN = 0.09;
+const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 7.0, TURN = 0.09;
 const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Zəhra", "Shadow", "Murad", "Toxic", "Elvin", "Rəşad", "Nova", "Fidan", "Blitz", "Kamran", "Ruby"];
 
 // growth goes mostly into thickness; body length (segment count) grows slowly and is capped
 const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
-const segCount = (len: number) => Math.floor(10 + Math.min(90, Math.sqrt(Math.max(0, len - 10)) * 5));
+const segCount = (len: number) => Math.floor(10 + Math.min(140, Math.sqrt(Math.max(0, len - 10)) * 8));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
