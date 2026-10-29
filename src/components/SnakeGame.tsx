@@ -18,6 +18,11 @@ const segCount = (len: number) => Math.floor(10 + Math.min(140, Math.sqrt(Math.m
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
+type Cfg = { quality: "low" | "medium" | "high"; grid: boolean; glow: boolean; boostFx: boolean; names: boolean; minimap: boolean; showFps: boolean };
+const DEF: Cfg = { quality: "medium", grid: true, glow: true, boostFx: true, names: true, minimap: true, showFps: false };
+const QCAP = { low: 0.75, medium: 1, high: 1.5 };
+const FOODC = Array.from({ length: 24 }, (_, i) => `hsl(${i * 15},100%,65%)`);
+
 export default function SnakeGame() {
   const cvs = useRef<HTMLCanvasElement>(null);
   const [state, setState] = useState<"menu" | "play" | "dead">("menu");
@@ -25,17 +30,24 @@ export default function SnakeGame() {
   const [score, setScore] = useState(0);
   const [online, setOnline] = useState(1);
   const startRef = useRef<() => void>(() => {});
+  const [cfg, setCfg] = useState<Cfg>(DEF);
+  const [showCfg, setShowCfg] = useState(false);
+  const [fps, setFps] = useState(0);
+  const cfgRef = useRef<Cfg>(DEF); cfgRef.current = cfg;
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem("neon-cfg") || "null"); if (v) setCfg({ ...DEF, ...v }); } catch { /* ignore */ } }, []);
+  const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
 
   useEffect(() => {
     const c = cvs.current!; const ctx = c.getContext("2d")!;
-    let raf = 0, idc = 1, playing = false;
+    let raf = 0, idc = 1, playing = false, fpsN = 0, fpsT = 0;
     let snakes: Snake[] = []; let foods: Food[] = []; let me: Snake | null = null;
     const mouse = { x: 0, y: 0, down: false };
     const cam = { x: 0, y: 0, z: 1 };
     const css = getComputedStyle(document.documentElement);
     const bg = css.getPropertyValue("--game-bg").trim() || "#0b0f1a";
 
-    const resize = () => { const d = Math.min(1.5, devicePixelRatio || 1); c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; };
+    const dpr = () => Math.min(QCAP[cfgRef.current.quality], devicePixelRatio || 1);
+    const resize = () => { const d = dpr(); c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; };
     resize(); addEventListener("resize", resize);
 
     const mk = (nm: string, bot: boolean): Snake => {
@@ -159,7 +171,7 @@ export default function SnakeGame() {
         let d = s.target - s.angle; d = Math.atan2(Math.sin(d), Math.cos(d));
         s.angle += Math.max(-TURN, Math.min(TURN, d)) * dt;
         const sp = (s.boost ? BOOST : SPEED) * dt;
-        if (s.boost) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
+        if (s.boost && C.boostFx) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
         const nh = { x: h.x + Math.cos(s.angle) * sp, y: h.y + Math.sin(s.angle) * sp };
         s.pts[0] = nh;
         for (let i = 1; i < s.pts.length; i++) {
@@ -208,21 +220,24 @@ export default function SnakeGame() {
       const tz = me && me.alive ? Math.max(0.5, 1.15 - width(me) / 70) : 0.7; cam.z += (tz - cam.z) * 0.03;
 
       // draw
-      const d = Math.min(1.5, devicePixelRatio || 1);
+      const C = cfgRef.current; const d = dpr();
+      if (c.width !== Math.round(innerWidth * d)) resize();
+      fpsN++; fpsT += dt; if (fpsT >= 30) { if (C.showFps) setFps(Math.round(fpsN * 60 / fpsT)); fpsN = 0; fpsT = 0; }
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
       ctx.setTransform(d * cam.z, 0, 0, d * cam.z, (innerWidth / 2) * d - cam.x * cam.z * d, (innerHeight / 2) * d - cam.y * cam.z * d);
       const vw = innerWidth / cam.z / 2 + 60, vh = innerHeight / cam.z / 2 + 60;
       // hex grid
       ctx.strokeStyle = "rgba(120,160,255,0.06)"; ctx.lineWidth = 2; const g = 60;
-      ctx.beginPath();
+      if (C.grid) { ctx.beginPath();
       for (let x = Math.floor((cam.x - vw) / g) * g; x < cam.x + vw; x += g) { ctx.moveTo(x, cam.y - vh); ctx.lineTo(x, cam.y + vh); }
       for (let y = Math.floor((cam.y - vh) / g) * g; y < cam.y + vh; y += g) { ctx.moveTo(cam.x - vw, y); ctx.lineTo(cam.x + vw, y); }
-      ctx.stroke();
+      ctx.stroke(); }
       ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(0, 0, WORLD, 0, 7); ctx.stroke();
       // food (sprites)
       const ps = now / 300;
       for (const f of foods) {
         if (Math.abs(f.x - cam.x) > vw || Math.abs(f.y - cam.y) > vh) continue;
+        if (!C.glow) { ctx.fillStyle = FOODC[f.hue]; ctx.fillRect(f.x - f.r * 0.8, f.y - f.r * 0.8, f.r * 1.6, f.r * 1.6); continue; }
         const sz = f.r * 2.5 * (1 + Math.sin(ps + f.x) * 0.15);
         ctx.drawImage(SPR[f.hue], f.x - sz, f.y - sz, sz * 2, sz * 2);
       }
@@ -243,6 +258,7 @@ export default function SnakeGame() {
           ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, w * 0.38, 0, 7); ctx.fill();
           ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
         }
+        if (!C.names) continue;
         const L = label(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a");
         ctx.drawImage(L, h.x - L.width / 4, h.y - w - 22, L.width / 2, L.height / 2);
       }
@@ -262,10 +278,12 @@ export default function SnakeGame() {
         });
       }
       ctx.drawImage(lb, innerWidth - 210, 16, lb.width / d, lb.height / d);
+      if (C.minimap) {
       const mr = 60, mx = innerWidth - 80, my = innerHeight - 80;
       ctx.fillStyle = "rgba(10,14,30,0.6)"; ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fill();
       ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 2; ctx.stroke();
       for (const s of all) { ctx.fillStyle = s === me ? "#5f8" : `hsla(${s.hue},90%,60%,0.7)`; ctx.beginPath(); ctx.arc(mx + (s.pts[0].x / WORLD) * mr, my + (s.pts[0].y / WORLD) * mr, s === me ? 3.5 : 2, 0, 7); ctx.fill(); }
+      }
 
       if (me && playing && (hudT += dt) > 10) { hudT = 0; setScore(Math.floor(me.len * 10)); }
       raf = requestAnimationFrame(loop);
@@ -286,6 +304,31 @@ export default function SnakeGame() {
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
         🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
       </div>
+      {cfg.showFps && (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-card/60 px-2 py-1 text-xs text-foreground">FPS: <b className="text-primary">{fps}</b></div>
+      )}
+      <button type="button" onClick={() => setShowCfg((v) => !v)} aria-label="Parametrlər"
+        className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground backdrop-blur hover:border-primary">⚙️ Qrafika</button>
+      {showCfg && (
+        <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground backdrop-blur">
+          <div className="mb-2 font-display font-bold">Qrafika keyfiyyəti</div>
+          <div className="mb-3 grid grid-cols-3 gap-1">
+            {(["low", "medium", "high"] as const).map((q) => (
+              <button key={q} type="button" onClick={() => upd({ quality: q })}
+                className={`rounded-lg py-1.5 text-xs ${cfg.quality === q ? "bg-primary text-primary-foreground" : "bg-background/60"}`}>
+                {q === "low" ? "Aşağı" : q === "medium" ? "Orta" : "Yüksək"}
+              </button>
+            ))}
+          </div>
+          {([["grid", "Arxa fon şəbəkəsi"], ["glow", "Yem parıltısı"], ["boostFx", "Sürət effekti"], ["names", "Adlar"], ["minimap", "Kiçik xəritə"], ["showFps", "FPS göstər"]] as const).map(([k, t]) => (
+            <label key={k} className="flex cursor-pointer items-center justify-between py-1">
+              <span>{t}</span>
+              <input type="checkbox" checked={cfg[k]} onChange={(e) => upd({ [k]: e.target.checked } as Partial<Cfg>)} className="h-4 w-4 accent-primary" />
+            </label>
+          ))}
+          <p className="mt-2 text-xs text-muted-foreground">Donursa: keyfiyyəti "Aşağı" et və effektləri söndür.</p>
+        </div>
+      )}
       {state === "play" && (
         <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/60 px-4 py-2 font-display text-foreground backdrop-blur">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Uzunluq</div>
