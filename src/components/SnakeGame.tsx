@@ -12,7 +12,9 @@ type Food = { x: number; y: number; r: number; hue: number; v: number };
 const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 5.2, TURN = 0.09;
 const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Zəhra", "Shadow", "Murad", "Toxic", "Elvin", "Rəşad", "Nova", "Fidan", "Blitz", "Kamran", "Ruby"];
 
-const width = (s: Snake) => 7 + Math.min(18, Math.sqrt(s.len) * 0.9);
+// growth goes mostly into thickness; body length (segment count) grows slowly and is capped
+const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
+const segCount = (len: number) => Math.floor(10 + Math.min(90, Math.sqrt(Math.max(0, len - 10)) * 5));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
@@ -102,7 +104,8 @@ export default function SnakeGame() {
 
     const kill = (s: Snake) => {
       s.alive = false;
-      for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, 1 + Math.min(3, s.len / 80));
+      const fv = Math.min(4, Math.max(1, (s.len * 0.6) / Math.max(1, s.pts.length / 2)));
+      for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
       if (s === me) { playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
     };
 
@@ -163,7 +166,7 @@ export default function SnakeGame() {
           const a = s.pts[i - 1], b = s.pts[i]; const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
           if (l > SEG) { b.x = a.x + (dx / l) * SEG; b.y = a.y + (dy / l) * SEG; }
         }
-        const want = Math.floor(s.len);
+        const want = segCount(s.len);
         while (s.pts.length < want) s.pts.push({ ...s.pts[s.pts.length - 1] });
         while (s.pts.length > want && s.pts.length > 10) s.pts.pop();
         if (Math.hypot(nh.x, nh.y) > WORLD) kill(s);
