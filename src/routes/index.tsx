@@ -9,10 +9,10 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "neon.io — Neon ilan oyunu" },
       { property: "og:description", content: "Ye, böyü, rəqibləri kəs. Gecikməsiz neon ilan oyunu." },
       { property: "og:type", content: "website" },
-      { property: "og:url", content: "https://salam-bridge-together.lovable.app/" },
+      { property: "og:url", content: "https://neonworm.app/" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [{ rel: "canonical", href: "https://salam-bridge-together.lovable.app/" }, { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" }],
+    links: [{ rel: "canonical", href: "https://neonworm.app/" }, { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" }],
   }),
   component: SnakeGame,
 });
