@@ -357,7 +357,7 @@ export default function SnakeGame() {
 
   const nameRef = useRef(name); nameRef.current = name;
   const ownedSkins = SKINS.filter((k) => owned.includes(k.id));
-  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === skin); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (owned.includes(n.id)) pick(n.id); };
+  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (owned.includes(n.id)) pick(n.id); };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
   const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) alert("Google ilə giriş alınmadı"); };
@@ -404,37 +404,71 @@ export default function SnakeGame() {
       {state !== "play" && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
           <form
-            onSubmit={(e) => { e.preventDefault(); startRef.current(); }}
-            className="w-[min(92vw,420px)] rounded-3xl border border-border bg-card/80 p-8 text-center shadow-glow"
+            onSubmit={(e) => { e.preventDefault(); if (owned.includes(preview)) startRef.current(); }}
+            className="max-h-[96vh] w-[min(94vw,460px)] overflow-y-auto rounded-3xl border border-border bg-card/85 p-5 text-center shadow-glow"
           >
-            <h1 className="font-display text-5xl font-bold tracking-tight text-gradient">neon.io<span className="sr-only"> — onlayn neon ilan oyunu</span></h1><p className="mt-1 text-sm font-semibold text-foreground">Neon ilan oyunu</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {state === "dead" ? `Öldün! Son uzunluq: ${score}` : "Ye, böyü, rəqibləri kəs."}
-            </p>
-            <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground"><span>Skin seç</span><span>🪙 <b className="text-primary">{coins}</b> sikkə</span></div>
-            <div className="mt-2 grid max-h-44 grid-cols-4 gap-2 overflow-y-auto pr-1">
-              {SKINS.map((k) => {
-                const has = owned.includes(k.id);
-                const bg = k.type === "bands" ? `linear-gradient(${k.colors.join(",")})` : k.type !== "hue" ? `repeating-linear-gradient(90deg,${k.colors.map((c, i) => `${c} ${i * 8}px ${(i + 1) * 8}px`).join(",")})` : k.colors[0];
+            <div className="flex items-center justify-between">
+              <h1 className="font-display text-3xl font-bold tracking-tight text-gradient">neon.io<span className="sr-only"> — onlayn neon ilan oyunu</span></h1>
+              {user ? (
+                <button type="button" onClick={() => supabase.auth.signOut()} className="flex items-center gap-2 rounded-full border border-border bg-background/60 px-2 py-1 text-xs text-foreground" title="Çıxış">
+                  {user.avatar && <img src={user.avatar} alt="" className="h-6 w-6 rounded-full" referrerPolicy="no-referrer" />}{user.name} ✕
+                </button>
+              ) : (
+                <button type="button" onClick={google} className="rounded-full border border-border bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:border-primary">G Google ilə gir</button>
+              )}
+            </div>
+            <p className="mt-1 text-left text-sm font-semibold text-foreground">Neon ilan oyunu</p>
+            <p className="text-left text-xs text-muted-foreground">{state === "dead" ? `Öldün! Son uzunluq: ${score}` : "Ye, böyü, rəqibləri kəs."}</p>
+
+            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-border bg-background/60 p-3">
+              <button type="button" onClick={() => cycle(-1)} aria-label="Əvvəlki skin" className="font-display text-4xl font-bold text-primary">‹</button>
+              <div className="flex-1">
+                <div className="relative mx-auto h-10 w-48 rounded-full" style={{ background: curBg }}>
+                  <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-foreground" /><span className="absolute right-2 bottom-2 h-2.5 w-2.5 rounded-full bg-foreground" />
+                </div>
+                <div className="mt-2 text-sm font-semibold text-foreground">{cur.name}</div>
+                <div className="text-xs text-muted-foreground">🪙 <b className="text-primary">{coins}</b> · {owned.includes(cur.id) ? "Səndədir ✓" : `Qiymət: 🪙${cur.price}`}</div>
+              </div>
+              <button type="button" onClick={() => cycle(1)} aria-label="Növbəti skin" className="font-display text-4xl font-bold text-primary">›</button>
+            </div>
+
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={14} placeholder="Adın"
+              className="mt-3 w-full rounded-xl border border-input bg-background/60 px-4 py-2.5 text-center text-foreground outline-none focus:border-primary" />
+
+            {owned.includes(cur.id) ? (
+              <button type="submit" className="mt-3 w-full rounded-2xl bg-accent py-4 font-display text-2xl font-bold uppercase tracking-wide text-accent-foreground shadow-glow transition hover:scale-[1.02]">
+                {state === "dead" ? "Yenidən oyna" : "Oyna"}
+              </button>
+            ) : (
+              <button type="button" onClick={() => pick(cur.id)} disabled={coins < cur.price}
+                className="mt-3 w-full rounded-2xl bg-primary py-4 font-display text-xl font-bold text-primary-foreground disabled:opacity-50">
+                {coins < cur.price ? `Sikkə çatmır (🪙${cur.price})` : `Al 🪙${cur.price}`}
+              </button>
+            )}
+            <button type="button" onClick={fs} className="mt-2 w-full rounded-xl border border-border bg-background/60 py-2 text-sm font-semibold text-foreground hover:border-primary">⛶ Tam ekran</button>
+
+            <div className="mt-4 flex justify-end gap-1">
+              {(Object.keys(REGIONS) as (keyof typeof REGIONS)[]).map((r) => (
+                <button key={r} type="button" onClick={() => setRegion(r)}
+                  className={`rounded-full border px-3 py-1 text-xs ${region === r ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground"}`}>{r}</button>
+              ))}
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {REGIONS[region].map(([id, flag, label]) => {
+                const n = counts[id] || 0, pct = Math.min(100, (n / ROOM_MAX) * 100);
                 return (
-                  <button key={k.id} type="button" onClick={() => pick(k.id)} title={k.name}
-                    className={`rounded-xl border p-1 text-[10px] leading-tight ${skin === k.id ? "border-primary" : "border-border"} ${!has && coins < k.price ? "opacity-50" : ""}`}>
-                    <div className="h-6 w-full rounded-full" style={{ background: bg }} />
-                    <div className="mt-1 truncate text-foreground">{k.name}</div>
-                    <div className="text-muted-foreground">{has ? (skin === k.id ? "✓" : "Seç") : `🪙${k.price}`}</div>
+                  <button key={id} type="button" onClick={() => setRoom(id)}
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${room === id ? "border-primary bg-primary/10" : "border-border bg-background/50"}`}>
+                    <span className="text-sm font-semibold text-foreground">{flag} {label}</span>
+                    <span className="w-28">
+                      <span className="block text-right text-[10px] text-muted-foreground">OYUNÇU <b className="text-foreground">{n} / {ROOM_MAX}</b></span>
+                      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-primary" style={{ width: `${Math.max(4, pct)}%` }} /></span>
+                    </span>
                   </button>
                 );
               })}
             </div>
-            <p className="mt-1 text-[10px] text-muted-foreground">Oynadıqca sikkə qazan (uzunluq / 50). 👑 = premium</p>
-            <input
-              value={name} onChange={(e) => setName(e.target.value)} maxLength={14} placeholder="Adın"
-              className="mt-6 w-full rounded-xl border border-input bg-background/60 px-4 py-3 text-center text-foreground outline-none focus:border-primary"
-            />
-            <button type="submit" className="mt-4 w-full rounded-xl bg-primary py-3 font-display text-lg font-bold text-primary-foreground transition hover:scale-[1.02]">
-              {state === "dead" ? "Yenidən oyna" : "Oyna"}
-            </button>
-            <p className="mt-4 text-xs text-muted-foreground">Siçanla idarə et · Klik / Space = sürətlən</p>
+            <p className="mt-3 text-[10px] text-muted-foreground">Siçanla idarə et · Klik / Space = sürətlən · 🤖 botlar hər serverdə var</p>
           </form>
         </div>
       )}
