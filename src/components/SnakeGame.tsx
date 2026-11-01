@@ -397,10 +397,6 @@ export default function SnakeGame() {
       )}
       <button type="button" onClick={() => setShowCfg((v) => !v)} aria-label="Parametrlər"
         className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground backdrop-blur hover:border-primary">⚙️ Qrafika</button>
-      {state !== "play" && (
-        <Link to="/setup"
-          className="absolute bottom-16 left-36 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground backdrop-blur hover:border-primary">📋 Quraşdırma</Link>
-      )}
       {showCfg && (
         <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground backdrop-blur">
           <div className="mb-2 font-display font-bold">Qrafika keyfiyyəti</div>
