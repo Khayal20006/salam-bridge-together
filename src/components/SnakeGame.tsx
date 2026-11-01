@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
 import { lovable } from "@/integrations/lovable/index";
+import { PAID_SKINS, initializePaddle, getPaddlePriceId, getPaddleEnvironment } from "@/lib/paddle";
 
 const REGIONS = {
   Avropa: [["eu-1", "🇦🇿", "Bakı 1"], ["eu-2", "🇹🇷", "İstanbul 1"], ["eu-3", "🇩🇪", "Frankfurt 1"], ["eu-4", "🇫🇷", "Paris 1"]],
@@ -51,7 +52,8 @@ export default function SnakeGame() {
   useEffect(() => { try { setCoins(+(localStorage.getItem("neon-coins") || 0)); setOwned(JSON.parse(localStorage.getItem("neon-owned") || '["hue"]')); setSkin(localStorage.getItem("neon-skin") || "hue"); } catch { /* ignore */ } }, []);
   const pick = (id: string) => {
     const k = SKIN_BY[id];
-    if (owned.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (owned.includes(id) || paid.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (PAID_SKINS[id]) return;
     if (coins < k.price) return;
     const c = coins - k.price, o = [...owned, id];
     setCoins(c); setOwned(o); setSkin(id);
@@ -64,9 +66,11 @@ export default function SnakeGame() {
   const [region, setRegion] = useState<keyof typeof REGIONS>("Avropa");
   const [room, setRoom] = useState("eu-1");
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [user, setUser] = useState<{ name: string; avatar?: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; email?: string; name: string; avatar?: string } | null>(null);
+  const [paid, setPaid] = useState<string[]>([]);
+  const loadPaid = async (uid: string) => { const { data } = await supabase.from("skin_purchases").select("skin_id").eq("user_id", uid).eq("environment", getPaddleEnvironment()); setPaid((data || []).map((d) => d.skin_id)); };
   useEffect(() => {
-    const apply = (u: any) => { if (!u) { setUser(null); return; } const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14); setUser({ name: n, avatar: u.user_metadata?.avatar_url }); setName((o) => o || n); };
+    const apply = (u: any) => { if (!u) { setUser(null); setPaid([]); return; } const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14); setUser({ id: u.id, email: u.email, name: n, avatar: u.user_metadata?.avatar_url }); loadPaid(u.id); setName((o) => o || n); };
     supabase.auth.getUser().then(({ data }) => apply(data.user));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => apply(s?.user));
     return () => sub.subscription.unsubscribe();
@@ -357,8 +361,22 @@ export default function SnakeGame() {
   }, [room]);
 
   const nameRef = useRef(name); nameRef.current = name;
-  const ownedSkins = SKINS.filter((k) => owned.includes(k.id));
-  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (owned.includes(n.id)) pick(n.id); };
+  const has = (id: string) => owned.includes(id) || paid.includes(id);
+  const [buying, setBuying] = useState(false);
+  const buyReal = async (id: string) => {
+    if (!user) { setAuthMsg("Pulla almaq üçün əvvəlcə Google ilə gir."); setTimeout(() => setAuthMsg(""), 4000); return; }
+    setBuying(true);
+    try {
+      await initializePaddle();
+      const pid = await getPaddlePriceId(PAID_SKINS[id].priceId);
+      window.Paddle.Checkout.open({ items: [{ priceId: pid, quantity: 1 }], customer: user.email ? { email: user.email } : undefined, customData: { userId: user.id },
+        settings: { displayMode: "overlay", successUrl: `${window.location.origin}/?bought=${id}`, allowLogout: false, variant: "one-page" } });
+      window.Paddle.Update?.({ eventCallback: (e: any) => { if (e?.name === "checkout.completed") { let n = 0; const t = setInterval(() => { loadPaid(user.id); if (++n > 10) clearInterval(t); }, 2000); } } });
+    } catch (e) { console.error(e); setAuthMsg("Ödəniş açılmadı, yenidən yoxla."); }
+    finally { setBuying(false); }
+  };
+  const ownedSkins = SKINS.filter((k) => has(k.id));
+  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); localStorage.setItem("neon-skin", n.id); } };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
   const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
@@ -369,6 +387,7 @@ export default function SnakeGame() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
       <canvas ref={cvs} className="block touch-none" />
+      {getPaddleEnvironment() === "sandbox" && state !== "play" && <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 bg-accent/80 py-1 text-center text-xs text-accent-foreground">Önizləmədə ödənişlər test rejimindədir (real pul çəkilmir)</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
         🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
       </div>
@@ -406,7 +425,7 @@ export default function SnakeGame() {
       {state !== "play" && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
           <form
-            onSubmit={(e) => { e.preventDefault(); if (owned.includes(preview)) startRef.current(); }}
+            onSubmit={(e) => { e.preventDefault(); if (has(preview)) startRef.current(); }}
             className="max-h-[96vh] w-[min(94vw,460px)] overflow-y-auto rounded-3xl border border-border bg-card/85 p-5 text-center shadow-glow"
           >
             <div className="flex items-center justify-between">
@@ -430,7 +449,7 @@ export default function SnakeGame() {
                   <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-foreground" /><span className="absolute right-2 bottom-2 h-2.5 w-2.5 rounded-full bg-foreground" />
                 </div>
                 <div className="mt-2 text-sm font-semibold text-foreground">{cur.name}</div>
-                <div className="text-xs text-muted-foreground">🪙 <b className="text-primary">{coins}</b> · {owned.includes(cur.id) ? "Səndədir ✓" : `Qiymət: 🪙${cur.price}`}</div>
+                <div className="text-xs text-muted-foreground">🪙 <b className="text-primary">{coins}</b> · {has(cur.id) ? "Səndədir ✓" : PAID_SKINS[cur.id] ? `Premium · ${PAID_SKINS[cur.id].label}` : `Qiymət: 🪙${cur.price}`}</div>
               </div>
               <button type="button" onClick={() => cycle(1)} aria-label="Növbəti skin" className="font-display text-4xl font-bold text-primary">›</button>
             </div>
@@ -438,9 +457,14 @@ export default function SnakeGame() {
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={14} placeholder="Adın"
               className="mt-3 w-full rounded-xl border border-input bg-background/60 px-4 py-2.5 text-center text-foreground outline-none focus:border-primary" />
 
-            {owned.includes(cur.id) ? (
+            {has(cur.id) ? (
               <button type="submit" className="mt-3 w-full rounded-2xl bg-accent py-4 font-display text-2xl font-bold uppercase tracking-wide text-accent-foreground shadow-glow transition hover:scale-[1.02]">
                 {state === "dead" ? "Yenidən oyna" : "Oyna"}
+              </button>
+            ) : PAID_SKINS[cur.id] ? (
+              <button type="button" onClick={() => buyReal(cur.id)} disabled={buying}
+                className="mt-3 w-full rounded-2xl bg-primary py-4 font-display text-xl font-bold text-primary-foreground disabled:opacity-50">
+                {buying ? "Açılır..." : `💳 Al ${PAID_SKINS[cur.id].label}`}
               </button>
             ) : (
               <button type="button" onClick={() => pick(cur.id)} disabled={coins < cur.price}
