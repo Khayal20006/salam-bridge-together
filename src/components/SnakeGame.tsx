@@ -24,7 +24,7 @@ const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Z
 
 // growth goes mostly into thickness; body length (segment count) grows slowly and is capped
 const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
-const segCount = (len: number) => Math.floor(10 + Math.min(140, Math.sqrt(Math.max(0, len - 10)) * 8));
+const segCount = (len: number) => Math.floor(10 + Math.min(200, Math.sqrt(Math.max(0, len - 10)) * 10));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
@@ -129,12 +129,12 @@ export default function SnakeGame() {
     const MAX_FOOD = 1300;
     const addFood = (x?: number, y?: number, v = 1) => {
       const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
-      const f = { ...p, r: 3 + v * 2, hue: Math.floor(rnd(0, 24)), v };
+      const f = { ...p, r: 3 + Math.min(v, 4) * 2, hue: Math.floor(rnd(0, 24)), v };
       if (foods.length >= MAX_FOOD) foods[Math.floor(Math.random() * foods.length)] = f; else foods.push(f);
     };
     const init = () => {
       snakes = []; foods = [];
-      for (let i = 0; i < 900; i++) addFood();
+      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.4);
       for (let i = 0; i < 18; i++) snakes.push(mk(NAMES[i % NAMES.length], true));
     };
     init();
@@ -154,7 +154,7 @@ export default function SnakeGame() {
     });
     ch.on("broadcast", { event: "d" }, ({ payload: m }) => {
       const r = remotes.get(m.k); if (!r) return;
-      for (let i = 0; i < r.pts.length; i++) addFood(r.pts[i].x, r.pts[i].y, 1 + Math.min(3, r.len / 80));
+      for (let i = 0; i < r.pts.length; i++) addFood(r.pts[i].x, r.pts[i].y, 2.5 + Math.min(6, r.len / 40));
       remotes.delete(m.k);
     });
     ch.on("presence", { event: "sync" }, () => setOnline(Object.keys(ch.presenceState()).length || 1));
@@ -167,7 +167,7 @@ export default function SnakeGame() {
 
     const kill = (s: Snake) => {
       s.alive = false;
-      const fv = Math.min(4, Math.max(1, (s.len * 0.6) / Math.max(1, s.pts.length / 2)));
+      const fv = Math.min(8, Math.max(2, (s.len * 1.0) / Math.max(1, s.pts.length / 2)));
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
       if (s === me) { const add = coinsFor(s.len); setCoins((c) => { const n = c + add; localStorage.setItem("neon-coins", String(n)); return n; }); playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
     };
@@ -263,7 +263,7 @@ export default function SnakeGame() {
         ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, sk: me.skin, p } });
       }
       while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
-      while (foods.length < 900) addFood();
+      while (foods.length < 900) addFood(undefined, undefined, 0.4);
 
       // camera
       const focus = me && me.alive ? me.pts[0] : cam;
