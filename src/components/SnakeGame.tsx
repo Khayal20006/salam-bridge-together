@@ -66,6 +66,11 @@ export default function SnakeGame() {
   const [region, setRegion] = useState<keyof typeof REGIONS>("Avropa");
   const [room, setRoom] = useState("eu-1");
   const [counts, setCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("room");
+    if (!r) return;
+    for (const [reg, list] of Object.entries(REGIONS) as any) if (list.some((s: any) => s[0] === r)) { setRegion(reg); setRoom(r); }
+  }, []);
   const [user, setUser] = useState<{ id: string; email?: string; name: string; avatar?: string } | null>(null);
   const [paid, setPaid] = useState<string[]>([]);
   const loadPaid = async (uid: string) => { const { data } = await supabase.from("skin_purchases").select("skin_id").eq("user_id", uid).eq("environment", getPaddleEnvironment()); setPaid((data || []).map((d) => d.skin_id)); };
@@ -485,6 +490,18 @@ export default function SnakeGame() {
               </button>
             )}
             <button type="button" onClick={fs} className="mt-2 w-full rounded-xl border border-border bg-background/60 py-2 text-sm font-semibold text-foreground hover:border-primary">⛶ Tam ekran</button>
+            {(() => {
+              const link = `https://neonworm.app/?room=${room}`;
+              const txt = encodeURIComponent(`Mənimlə neonworm.app-da oyna! 🐍 ${link}`);
+              const share = async () => { try { if (navigator.share) await navigator.share({ title: "neon.io", text: "Mənimlə oyna! 🐍", url: link }); else { await navigator.clipboard.writeText(link); setAuthMsg("Link kopyalandı ✅"); setTimeout(() => setAuthMsg(""), 2500); } } catch {} };
+              return (
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <button type="button" onClick={share} className="rounded-xl border border-border bg-background/60 py-2 text-xs font-semibold text-foreground hover:border-primary">🔗 Dəvət et</button>
+                  <a href={`https://wa.me/?text=${txt}`} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-background/60 py-2 text-center text-xs font-semibold text-foreground hover:border-primary">WhatsApp</a>
+                  <a href={`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Mənimlə oyna! 🐍")}`} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-background/60 py-2 text-center text-xs font-semibold text-foreground hover:border-primary">Telegram</a>
+                </div>
+              );
+            })()}
 
             <div className="mt-4 flex justify-end gap-1">
               {(Object.keys(REGIONS) as (keyof typeof REGIONS)[]).map((r) => (
