@@ -272,11 +272,11 @@ export default function SnakeGame() {
           const m = sk.colors.length;
           for (let j = 0; j < m; j++) { ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2 * (1 - j / m); ctx.stroke(); }
         } else {
-          const m = sk.colors.length, K = 4;
+          const m = sk.colors.length, K = 4, an = sk.type === "anim", sh = an ? Math.floor(now / 60) % (K * m) : 0;
           for (let j = 0; j < m; j++) {
             ctx.beginPath();
-            for (let i = j * K; i < n - 1; i += K * m) { ctx.moveTo(s.pts[i].x, s.pts[i].y); for (let q = i + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
-            ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2; ctx.stroke();
+            for (let i = (j * K + sh) % (K * m) - K * m; i < n - 1; i += K * m) { const i0 = Math.max(0, i); ctx.moveTo(s.pts[i0].x, s.pts[i0].y); for (let q = i0 + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
+            ctx.strokeStyle = an ? `hsl(${(now / 8 + j * (360 / m)) % 360 | 0},100%,60%)` : sk.colors[j]; ctx.lineWidth = w * 2; ctx.stroke();
           }
         }
         // eyes
@@ -376,7 +376,7 @@ export default function SnakeGame() {
             <div className="mt-2 grid max-h-44 grid-cols-4 gap-2 overflow-y-auto pr-1">
               {SKINS.map((k) => {
                 const has = owned.includes(k.id);
-                const bg = k.type === "bands" ? `linear-gradient(${k.colors.join(",")})` : k.type === "stripes" ? `repeating-linear-gradient(90deg,${k.colors.map((c, i) => `${c} ${i * 8}px ${(i + 1) * 8}px`).join(",")})` : k.colors[0];
+                const bg = k.type === "bands" ? `linear-gradient(${k.colors.join(",")})` : k.type !== "hue" ? `repeating-linear-gradient(90deg,${k.colors.map((c, i) => `${c} ${i * 8}px ${(i + 1) * 8}px`).join(",")})` : k.colors[0];
                 return (
                   <button key={k.id} type="button" onClick={() => pick(k.id)} title={k.name}
                     className={`rounded-xl border p-1 text-[10px] leading-tight ${skin === k.id ? "border-primary" : "border-border"} ${!has && coins < k.price ? "opacity-50" : ""}`}>
