@@ -1,3 +1,3 @@
 # Roadmap
-- [ ] Paid skins (RGB Animasiya, Plazma, Əfsanə ⚡): create products + checkout + unlock on purchase — waiting on prices from user
+- [x] Paid skins: products + checkout + unlock on purchase (one-time, saved to Google account)
 - [ ] Google Search Console setup — after publish
