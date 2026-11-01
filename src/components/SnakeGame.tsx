@@ -129,7 +129,7 @@ export default function SnakeGame() {
     const MAX_FOOD = 1300;
     const addFood = (x?: number, y?: number, v = 1) => {
       const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
-      const f = { ...p, r: Math.max(3, 3 + v * 2), hue: Math.floor(rnd(0, 24)), v };
+      const f = { ...p, r: 3 + Math.min(v, 4) * 2, hue: Math.floor(rnd(0, 24)), v };
       if (foods.length >= MAX_FOOD) foods[Math.floor(Math.random() * foods.length)] = f; else foods.push(f);
     };
     const init = () => {
@@ -167,7 +167,7 @@ export default function SnakeGame() {
 
     const kill = (s: Snake) => {
       s.alive = false;
-      const fv = Math.min(4, Math.max(1, (s.len * 0.6) / Math.max(1, s.pts.length / 2)));
+      const fv = Math.min(8, Math.max(2, (s.len * 1.0) / Math.max(1, s.pts.length / 2)));
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
       if (s === me) { const add = coinsFor(s.len); setCoins((c) => { const n = c + add; localStorage.setItem("neon-coins", String(n)); return n; }); playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
     };
