@@ -302,6 +302,7 @@ export default function SnakeGame() {
         ctx.beginPath(); ctx.moveTo(s.pts[n - 1].x, s.pts[n - 1].y);
         for (let i = n - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
         if (s.boost && C.boostFx) { ctx.strokeStyle = sk.type === "hue" ? `hsla(${s.hue | 0},100%,60%,0.25)` : sk.colors[0] + "44"; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        if (sk.type !== "hue") { ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = w * 2 + 4; ctx.stroke(); }
         if (sk.type === "hue") {
           ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
           ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
@@ -315,6 +316,16 @@ export default function SnakeGame() {
             ctx.beginPath();
             for (let i = (j * K + sh) % (K * m) - K * m; i < n - 1; i += K * m) { const i0 = Math.max(0, i); ctx.moveTo(s.pts[i0].x, s.pts[i0].y); for (let q = i0 + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
             ctx.strokeStyle = an ? `hsl(${(now / 8 + j * (360 / m)) % 360 | 0},100%,60%)` : sk.colors[j]; ctx.lineWidth = w * 2; ctx.stroke();
+          }
+        }
+        if (sk.type !== "hue") {
+          ctx.beginPath(); ctx.moveTo(s.pts[n - 1].x, s.pts[n - 1].y);
+          for (let i = n - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
+          ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = w * 0.45; ctx.stroke();
+          if (sk.spark && C.boostFx) {
+            ctx.fillStyle = sk.spark;
+            for (let k = 0; k < 6; k++) { const q = s.pts[((now / 25 + (k * n) / 6) % n) | 0]; const r = w * (0.25 + 0.15 * Math.sin(now / 120 + k)); ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 7); ctx.fill(); }
+            ctx.globalAlpha = 1;
           }
         }
         // eyes
