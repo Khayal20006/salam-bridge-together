@@ -2,6 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
+import { lovable } from "@/integrations/lovable/index";
+
+const REGIONS = {
+  Avropa: [["eu-1", "🇦🇿", "Bakı 1"], ["eu-2", "🇹🇷", "İstanbul 1"], ["eu-3", "🇩🇪", "Frankfurt 1"], ["eu-4", "🇫🇷", "Paris 1"]],
+  Asiya: [["as-1", "🇯🇵", "Tokio 1"], ["as-2", "🇸🇬", "Sinqapur 1"]],
+  Amerika: [["am-1", "🇺🇸", "Nyu-York 1"], ["am-2", "🇧🇷", "San-Paulu 1"]],
+} as const;
+const ROOM_MAX = 50;
 
 type P = { x: number; y: number };
 type Snake = {
@@ -50,6 +58,30 @@ export default function SnakeGame() {
     localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", id);
   };
   const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
+  const [preview, setPreview] = useState("hue");
+  useEffect(() => { setPreview(skin); }, [skin]);
+  const [region, setRegion] = useState<keyof typeof REGIONS>("Avropa");
+  const [room, setRoom] = useState("eu-1");
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [user, setUser] = useState<{ name: string; avatar?: string } | null>(null);
+  useEffect(() => {
+    const apply = (u: any) => { if (!u) { setUser(null); return; } const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14); setUser({ name: n, avatar: u.user_metadata?.avatar_url }); setName((o) => o || n); };
+    supabase.auth.getUser().then(({ data }) => apply(data.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => apply(s?.user));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  // lobby: live player count per room (cheap presence-only channel)
+  useEffect(() => {
+    const k = Math.random().toString(36).slice(2, 10);
+    const lb = supabase.channel("neon-lobby", { config: { presence: { key: k } } });
+    lb.on("presence", { event: "sync" }, () => {
+      const c: Record<string, number> = {};
+      Object.values(lb.presenceState()).forEach((arr: any) => { const r = arr[0]?.room; if (r) c[r] = (c[r] || 0) + 1; });
+      setCounts(c);
+    });
+    lb.subscribe((st) => { if (st === "SUBSCRIBED") lb.track({ room }); });
+    return () => { supabase.removeChannel(lb); };
+  }, [room]);
 
   useEffect(() => {
     const c = cvs.current!; const ctx = c.getContext("2d")!;
@@ -105,7 +137,7 @@ export default function SnakeGame() {
     // --- multiplayer (realtime broadcast) ---
     const myKey = Math.random().toString(36).slice(2, 10);
     const remotes = new Map<string, Snake>();
-    const ch = supabase.channel("neon-arena", { config: { broadcast: { self: false }, presence: { key: myKey } } });
+    const ch = supabase.channel("neon-arena-" + room, { config: { broadcast: { self: false }, presence: { key: myKey } } });
     ch.on("broadcast", { event: "s" }, ({ payload: m }) => {
       let r = remotes.get(m.k);
       const pts: P[] = []; for (let i = 0; i < m.p.length; i += 2) pts.push({ x: m.p[i], y: m.p[i + 1] });
@@ -321,9 +353,16 @@ export default function SnakeGame() {
       removeEventListener("pointerdown", onDown); removeEventListener("pointerup", onUp); removeEventListener("keydown", onKey); removeEventListener("keyup", onKey);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [room]);
 
   const nameRef = useRef(name); nameRef.current = name;
+  const ownedSkins = SKINS.filter((k) => owned.includes(k.id));
+  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === skin); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (owned.includes(n.id)) pick(n.id); };
+  const cur = SKIN_BY[preview] || SKIN_BY.hue;
+  const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
+  const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) alert("Google ilə giriş alınmadı"); };
+  const fs = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };
+  void ownedSkins;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
