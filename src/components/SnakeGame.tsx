@@ -52,7 +52,8 @@ export default function SnakeGame() {
   useEffect(() => { try { setCoins(+(localStorage.getItem("neon-coins") || 0)); setOwned(JSON.parse(localStorage.getItem("neon-owned") || '["hue"]')); setSkin(localStorage.getItem("neon-skin") || "hue"); } catch { /* ignore */ } }, []);
   const pick = (id: string) => {
     const k = SKIN_BY[id];
-    if (owned.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (owned.includes(id) || paid.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (PAID_SKINS[id]) return;
     if (coins < k.price) return;
     const c = coins - k.price, o = [...owned, id];
     setCoins(c); setOwned(o); setSkin(id);
@@ -386,6 +387,7 @@ export default function SnakeGame() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
       <canvas ref={cvs} className="block touch-none" />
+      {getPaddleEnvironment() === "sandbox" && state !== "play" && <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 bg-accent/80 py-1 text-center text-xs text-accent-foreground">Önizləmədə ödənişlər test rejimindədir (real pul çəkilmir)</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
         🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
       </div>
