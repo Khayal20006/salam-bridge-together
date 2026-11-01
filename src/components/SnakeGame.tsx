@@ -305,11 +305,12 @@ export default function SnakeGame() {
         if (sk.type === "hue") {
           ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
           ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
-        } else if (sk.type === "bands") {
+        } else if (sk.type === "bands" || sk.type === "pulse") {
           const m = sk.colors.length;
+          if (sk.type === "pulse" && C.boostFx) { const a = 0.18 + 0.14 * Math.sin(now / 220 + s.id); ctx.globalAlpha = a; ctx.strokeStyle = sk.colors[m - 1]; ctx.lineWidth = w * 2 + 10; ctx.stroke(); ctx.globalAlpha = 1; }
           for (let j = 0; j < m; j++) { ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2 * (1 - j / m); ctx.stroke(); }
         } else {
-          const m = sk.colors.length, K = 4, an = sk.type === "anim", sh = an ? Math.floor(now / 60) % (K * m) : 0;
+          const m = sk.colors.length, K = 4, an = sk.type === "anim", sh = an || sk.type === "flow" ? Math.floor(now / 70) % (K * m) : 0;
           for (let j = 0; j < m; j++) {
             ctx.beginPath();
             for (let i = (j * K + sh) % (K * m) - K * m; i < n - 1; i += K * m) { const i0 = Math.max(0, i); ctx.moveTo(s.pts[i0].x, s.pts[i0].y); for (let q = i0 + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
@@ -320,7 +321,7 @@ export default function SnakeGame() {
         for (const side of [-1, 1]) {
           const ex = h.x + Math.cos(s.angle + side * 0.6) * w * 0.6, ey = h.y + Math.sin(s.angle + side * 0.6) * w * 0.6;
           ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, w * 0.38, 0, 7); ctx.fill();
-          ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
+          ctx.fillStyle = sk.eye || "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
         }
         if (!C.names) continue;
         const L = label(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a");
@@ -378,7 +379,7 @@ export default function SnakeGame() {
   const ownedSkins = SKINS.filter((k) => has(k.id));
   const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); localStorage.setItem("neon-skin", n.id); } };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
-  const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
+  const curBg = (cur.type === "bands" || cur.type === "pulse") ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
   void 0;
   const fs = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };
