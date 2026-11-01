@@ -59,6 +59,7 @@ export default function SnakeGame() {
   };
   const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
   const [preview, setPreview] = useState("hue");
+  const [authMsg, setAuthMsg] = useState("");
   useEffect(() => { setPreview(skin); }, [skin]);
   const [region, setRegion] = useState<keyof typeof REGIONS>("Avropa");
   const [room, setRoom] = useState("eu-1");
@@ -360,7 +361,8 @@ export default function SnakeGame() {
   const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (owned.includes(n.id)) pick(n.id); };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
   const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
-  const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) alert("Google ilə giriş alınmadı"); };
+  const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
+  void 0;
   const fs = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };
   void ownedSkins;
 
@@ -417,6 +419,7 @@ export default function SnakeGame() {
                 <button type="button" onClick={google} className="rounded-full border border-border bg-background/60 px-3 py-1.5 text-xs font-semibold text-foreground hover:border-primary">G Google ilə gir</button>
               )}
             </div>
+            {authMsg && <p className="mt-2 rounded-lg bg-destructive/20 px-2 py-1 text-xs text-foreground">{authMsg}</p>}
             <p className="mt-1 text-left text-sm font-semibold text-foreground">Neon ilan oyunu</p>
             <p className="text-left text-xs text-muted-foreground">{state === "dead" ? `Öldün! Son uzunluq: ${score}` : "Ye, böyü, rəqibləri kəs."}</p>
 
