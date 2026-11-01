@@ -1,4 +1,4 @@
-export type Skin = { id: string; name: string; type: "hue" | "stripes" | "bands" | "anim"; colors: string[]; price: number; tier: "free" | "classic" | "flag" | "premium" };
+export type Skin = { id: string; name: string; type: "hue" | "stripes" | "bands" | "anim" | "flow" | "pulse"; colors: string[]; price: number; tier: "free" | "classic" | "flag" | "premium" | "halloween"; eye?: string };
 export const SKINS: Skin[] = [
   { id: "hue", name: "Neon", type: "hue", colors: ["#2ee88a"], price: 0, tier: "free" },
   { id: "fire", name: "Alov", type: "stripes", colors: ["#ff3b3b", "#ffd23b"], price: 50, tier: "classic" },
@@ -12,21 +12,27 @@ export const SKINS: Skin[] = [
   { id: "de", name: "Almaniya", type: "bands", colors: ["#111111", "#dd0000", "#ffce00"], price: 100, tier: "flag" },
   { id: "br", name: "Braziliya", type: "bands", colors: ["#009c3b", "#ffdf00", "#002776"], price: 100, tier: "flag" },
   { id: "fr", name: "Fransa", type: "bands", colors: ["#0055a4", "#ffffff", "#ef4135"], price: 100, tier: "flag" },
-  { id: "gold", name: "Qızıl Əjdaha 👑", type: "stripes", colors: ["#ffd23b", "#1a1405", "#ffb000"], price: 600, tier: "premium" },
-  { id: "lava", name: "Lava 👑", type: "bands", colors: ["#2a0500", "#ff4500", "#ffd000"], price: 700, tier: "premium" },
-  { id: "cosmos", name: "Kosmos 👑", type: "stripes", colors: ["#1b0b4a", "#7a3bff", "#ff5fe0", "#3bd8ff"], price: 900, tier: "premium" },
-  { id: "toxic", name: "Toksik 👑", type: "bands", colors: ["#0a1a00", "#7dff00", "#eaff8a"], price: 1000, tier: "premium" },
-  { id: "galaxy", name: "Qalaktika 💎", type: "bands", colors: ["#05021a", "#3a0ca3", "#7209b7", "#f72585", "#ffffff"], price: 1200, tier: "premium" },
-  { id: "phoenix", name: "Feniks 💎", type: "stripes", colors: ["#ff0040", "#ff7a00", "#ffd000", "#ff7a00"], price: 1300, tier: "premium" },
+  { id: "gold", name: "Qızıl Əjdaha 👑", type: "flow", colors: ["#ffd23b", "#1a1405", "#ffb000"], price: 600, tier: "premium" },
+  { id: "lava", name: "Lava 👑", type: "pulse", colors: ["#2a0500", "#ff4500", "#ffd000"], price: 700, tier: "premium" },
+  { id: "cosmos", name: "Kosmos 👑", type: "flow", colors: ["#1b0b4a", "#7a3bff", "#ff5fe0", "#3bd8ff"], price: 900, tier: "premium" },
+  { id: "toxic", name: "Toksik 👑", type: "pulse", colors: ["#0a1a00", "#7dff00", "#eaff8a"], price: 1000, tier: "premium" },
+  { id: "galaxy", name: "Qalaktika 💎", type: "pulse", colors: ["#05021a", "#3a0ca3", "#7209b7", "#f72585", "#ffffff"], price: 1200, tier: "premium" },
+  { id: "phoenix", name: "Feniks 💎", type: "flow", colors: ["#ff0040", "#ff7a00", "#ffd000", "#ff7a00"], price: 1300, tier: "premium" },
   { id: "ocean", name: "Okean 💎", type: "bands", colors: ["#001a33", "#0066cc", "#00ccff", "#b3f0ff"], price: 1100, tier: "premium" },
-  { id: "venom", name: "Zəhər 💎", type: "stripes", colors: ["#000000", "#39ff14", "#000000", "#b026ff"], price: 1400, tier: "premium" },
-  { id: "diamond", name: "Almaz 💎", type: "bands", colors: ["#7fdbff", "#e0ffff", "#ffffff", "#bfefff", "#ffffff"], price: 1600, tier: "premium" },
-  { id: "tiger", name: "Pələng 💎", type: "stripes", colors: ["#ff8c00", "#ff8c00", "#111111"], price: 1000, tier: "premium" },
+  { id: "venom", name: "Zəhər 💎", type: "flow", colors: ["#000000", "#39ff14", "#000000", "#b026ff"], price: 1400, tier: "premium" },
+  { id: "diamond", name: "Almaz 💎", type: "pulse", colors: ["#7fdbff", "#e0ffff", "#ffffff", "#bfefff", "#ffffff"], price: 1600, tier: "premium" },
+  { id: "tiger", name: "Pələng 💎", type: "flow", colors: ["#ff8c00", "#ff8c00", "#111111"], price: 1000, tier: "premium" },
   { id: "zebra", name: "Zebra", type: "stripes", colors: ["#ffffff", "#111111"], price: 300, tier: "classic" },
   { id: "sunset", name: "Gün batımı", type: "bands", colors: ["#2b1055", "#d53369", "#ff9a3b", "#ffe29a"], price: 400, tier: "classic" },
   { id: "rgb", name: "RGB Animasiya 🔥", type: "anim", colors: ["#ff0000", "#00ff00", "#0000ff"], price: 2000, tier: "premium" },
   { id: "plasma", name: "Plazma 🔥", type: "anim", colors: ["#ff00ff", "#00ffff", "#ffff00", "#ff00ff"], price: 2500, tier: "premium" },
   { id: "legend", name: "Əfsanə ⚡", type: "anim", colors: ["#ffd700", "#ffffff", "#ff4500", "#ffd700", "#ffffff"], price: 5000, tier: "premium" },
+  { id: "pumpkin", name: "Balqabaq 🎃", type: "flow", colors: ["#ff7a00", "#ff9a1f", "#1a0a00"], price: 300, tier: "halloween", eye: "#ffd000" },
+  { id: "skeleton", name: "Skelet 💀", type: "flow", colors: ["#f2f2f2", "#f2f2f2", "#111111"], price: 400, tier: "halloween", eye: "#ff2020" },
+  { id: "witch", name: "Cadugər 🧙", type: "flow", colors: ["#6a0dad", "#39ff14", "#2a003f"], price: 500, tier: "halloween", eye: "#39ff14" },
+  { id: "vampire", name: "Vampir 🧛", type: "pulse", colors: ["#120000", "#8b0000", "#ff1a1a"], price: 600, tier: "halloween", eye: "#ff0000" },
+  { id: "ghost", name: "Ruh 👻", type: "pulse", colors: ["#9fb4ff", "#d8e2ff", "#ffffff"], price: 700, tier: "halloween", eye: "#3bd8ff" },
+  { id: "spider", name: "Hörümçək 🕷️", type: "flow", colors: ["#111111", "#111111", "#ff3b00"], price: 800, tier: "halloween", eye: "#ff3b00" },
 ];
 export const SKIN_BY: Record<string, Skin> = Object.fromEntries(SKINS.map((s) => [s.id, s]));
 export const coinsFor = (len: number) => Math.floor(len / 5);
