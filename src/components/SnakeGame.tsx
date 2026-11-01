@@ -1,11 +1,12 @@
 // @ts-nocheck -- performance-critical canvas loop with array indexing
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
 
 type P = { x: number; y: number };
 type Snake = {
   id: number; name: string; pts: P[]; angle: number; target: number;
-  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; seen?: number; tgt?: P[];
+  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; skin?: string; seen?: number; tgt?: P[];
 };
 type Food = { x: number; y: number; r: number; hue: number; v: number };
 
@@ -35,6 +36,19 @@ export default function SnakeGame() {
   const [fps, setFps] = useState(0);
   const cfgRef = useRef<Cfg>(DEF); cfgRef.current = cfg;
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem("neon-cfg") || "null"); if (v) setCfg({ ...DEF, ...v }); } catch { /* ignore */ } }, []);
+  const [coins, setCoins] = useState(0);
+  const [owned, setOwned] = useState<string[]>(["hue"]);
+  const [skin, setSkin] = useState("hue");
+  const skinRef = useRef(skin); skinRef.current = skin;
+  useEffect(() => { try { setCoins(+(localStorage.getItem("neon-coins") || 0)); setOwned(JSON.parse(localStorage.getItem("neon-owned") || '["hue"]')); setSkin(localStorage.getItem("neon-skin") || "hue"); } catch { /* ignore */ } }, []);
+  const pick = (id: string) => {
+    const k = SKIN_BY[id];
+    if (owned.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (coins < k.price) return;
+    const c = coins - k.price, o = [...owned, id];
+    setCoins(c); setOwned(o); setSkin(id);
+    localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", id);
+  };
   const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
 
   useEffect(() => {
@@ -53,7 +67,7 @@ export default function SnakeGame() {
     const mk = (nm: string, bot: boolean): Snake => {
       const p = randPos(), a = rnd(0, 6.28);
       const pts = Array.from({ length: 12 }, (_, i) => ({ x: p.x - Math.cos(a) * i * SEG, y: p.y - Math.sin(a) * i * SEG }));
-      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 120) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0 };
+      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 120) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
     };
     // pre-rendered glowing food sprites (one per hue bucket) -> drawImage is far cheaper than arcs + string colors
     const SPR = Array.from({ length: 24 }, (_, i) => {
@@ -99,7 +113,7 @@ export default function SnakeGame() {
       r.name = m.n;
       if (!r.tgt || Math.abs(r.pts.length - pts.length) > 4) r.pts = pts.map((q) => ({ ...q }));
       else { while (r.pts.length < pts.length) r.pts.push({ ...r.pts[r.pts.length - 1] }); r.pts.length = pts.length; }
-      r.tgt = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.seen = performance.now();
+      r.tgt = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.skin = m.sk; r.seen = performance.now();
     });
     ch.on("broadcast", { event: "d" }, ({ payload: m }) => {
       const r = remotes.get(m.k); if (!r) return;
@@ -111,14 +125,14 @@ export default function SnakeGame() {
     let sendT = 0;
 
     startRef.current = () => {
-      me = mk(nameRef.current.trim() || "Sən", false); me.hue = 150; snakes.push(me); playing = true; setScore(10); setState("play");
+      me = mk(nameRef.current.trim() || "Sən", false); me.hue = 150; me.skin = skinRef.current; snakes.push(me); playing = true; setScore(10); setState("play");
     };
 
     const kill = (s: Snake) => {
       s.alive = false;
       const fv = Math.min(4, Math.max(1, (s.len * 0.6) / Math.max(1, s.pts.length / 2)));
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
-      if (s === me) { playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
+      if (s === me) { const add = coinsFor(s.len); setCoins((c) => { const n = c + add; localStorage.setItem("neon-coins", String(n)); return n; }); playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
     };
 
     const onMove = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
@@ -209,7 +223,7 @@ export default function SnakeGame() {
       if (me && me.alive && (sendT += dt) > 3) {
         sendT = 0; const p: number[] = [];
         for (let i = 0; i < me.pts.length; i += 2) p.push(Math.round(me.pts[i].x), Math.round(me.pts[i].y));
-        ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, p } });
+        ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, sk: me.skin, p } });
       }
       while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
       while (foods.length < 900) addFood();
@@ -247,11 +261,24 @@ export default function SnakeGame() {
         const w = width(s), h = s.pts[0];
         if (Math.abs(h.x - cam.x) > vw + s.pts.length * SEG || Math.abs(h.y - cam.y) > vh + s.pts.length * SEG) continue;
         // one path, two cheap strokes (no dashes, no shadowBlur)
-        ctx.beginPath(); ctx.moveTo(s.pts[s.pts.length - 1].x, s.pts[s.pts.length - 1].y);
-        for (let i = s.pts.length - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-        if (s.boost && C.boostFx) { ctx.strokeStyle = `hsla(${s.hue | 0},100%,60%,0.25)`; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
-        ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
-        ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
+        const sk = SKIN_BY[s.skin || "hue"] || SKIN_BY.hue, n = s.pts.length;
+        ctx.beginPath(); ctx.moveTo(s.pts[n - 1].x, s.pts[n - 1].y);
+        for (let i = n - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
+        if (s.boost && C.boostFx) { ctx.strokeStyle = sk.type === "hue" ? `hsla(${s.hue | 0},100%,60%,0.25)` : sk.colors[0] + "44"; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
+        if (sk.type === "hue") {
+          ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
+          ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
+        } else if (sk.type === "bands") {
+          const m = sk.colors.length;
+          for (let j = 0; j < m; j++) { ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2 * (1 - j / m); ctx.stroke(); }
+        } else {
+          const m = sk.colors.length, K = 4;
+          for (let j = 0; j < m; j++) {
+            ctx.beginPath();
+            for (let i = j * K; i < n - 1; i += K * m) { ctx.moveTo(s.pts[i].x, s.pts[i].y); for (let q = i + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
+            ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2; ctx.stroke();
+          }
+        }
         // eyes
         for (const side of [-1, 1]) {
           const ex = h.x + Math.cos(s.angle + side * 0.6) * w * 0.6, ey = h.y + Math.sin(s.angle + side * 0.6) * w * 0.6;
@@ -345,6 +372,22 @@ export default function SnakeGame() {
             <p className="mt-2 text-sm text-muted-foreground">
               {state === "dead" ? `Öldün! Son uzunluq: ${score}` : "Ye, böyü, rəqibləri kəs."}
             </p>
+            <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground"><span>Skin seç</span><span>🪙 <b className="text-primary">{coins}</b> sikkə</span></div>
+            <div className="mt-2 grid max-h-44 grid-cols-4 gap-2 overflow-y-auto pr-1">
+              {SKINS.map((k) => {
+                const has = owned.includes(k.id);
+                const bg = k.type === "bands" ? `linear-gradient(${k.colors.join(",")})` : k.type === "stripes" ? `repeating-linear-gradient(90deg,${k.colors.map((c, i) => `${c} ${i * 8}px ${(i + 1) * 8}px`).join(",")})` : k.colors[0];
+                return (
+                  <button key={k.id} type="button" onClick={() => pick(k.id)} title={k.name}
+                    className={`rounded-xl border p-1 text-[10px] leading-tight ${skin === k.id ? "border-primary" : "border-border"} ${!has && coins < k.price ? "opacity-50" : ""}`}>
+                    <div className="h-6 w-full rounded-full" style={{ background: bg }} />
+                    <div className="mt-1 truncate text-foreground">{k.name}</div>
+                    <div className="text-muted-foreground">{has ? (skin === k.id ? "✓" : "Seç") : `🪙${k.price}`}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">Oynadıqca sikkə qazan (uzunluq / 50). 👑 = premium</p>
             <input
               value={name} onChange={(e) => setName(e.target.value)} maxLength={14} placeholder="Adın"
               className="mt-6 w-full rounded-xl border border-input bg-background/60 px-4 py-3 text-center text-foreground outline-none focus:border-primary"
