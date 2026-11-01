@@ -12,3 +12,5 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+Sitemap: https://salam-bridge-together.lovable.app/sitemap.xml
