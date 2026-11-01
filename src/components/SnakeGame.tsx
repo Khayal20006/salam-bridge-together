@@ -69,7 +69,7 @@ export default function SnakeGame() {
   useEffect(() => {
     const r = new URLSearchParams(window.location.search).get("room");
     if (!r) return;
-    for (const [reg, list] of Object.entries(REGIONS) as any) if (list.some((s: any) => s.id === r)) { setRegion(reg); setRoom(r); }
+    for (const [reg, list] of Object.entries(REGIONS) as any) if (list.some((s: any) => s[0] === r)) { setRegion(reg); setRoom(r); }
   }, []);
   const [user, setUser] = useState<{ id: string; email?: string; name: string; avatar?: string } | null>(null);
   const [paid, setPaid] = useState<string[]>([]);
