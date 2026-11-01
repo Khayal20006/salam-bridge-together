@@ -1,6 +1,5 @@
 // @ts-nocheck -- performance-critical canvas loop with array indexing
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
 import { lovable } from "@/integrations/lovable/index";
