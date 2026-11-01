@@ -379,7 +379,7 @@ export default function SnakeGame() {
   const ownedSkins = SKINS.filter((k) => has(k.id));
   const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); localStorage.setItem("neon-skin", n.id); } };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
-  const curBg = cur.type === "bands" ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
+  const curBg = (cur.type === "bands" || cur.type === "pulse") ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
   void 0;
   const fs = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };
