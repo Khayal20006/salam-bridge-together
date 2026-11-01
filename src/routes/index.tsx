@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import SnakeGame from "@/components/SnakeGame";
+import { SiteFooter } from "@/components/SiteFooter";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -14,5 +15,15 @@ export const Route = createFileRoute("/")({
     ],
     links: [{ rel: "canonical", href: "https://neonworm.app/" }, { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" }],
   }),
-  component: SnakeGame,
+  component: Home,
 });
+
+function Home() {
+  return (
+    <>
+      <SnakeGame />
+      <p className="sr-only">neon.io by Slither is a free multiplayer snake game. Optional premium skins: RGB Animasiya $2.99, Plazma $4.99, Əfsanə $9.99.</p>
+      <SiteFooter overlay />
+    </>
+  );
+}
