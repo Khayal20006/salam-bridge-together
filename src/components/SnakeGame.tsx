@@ -368,7 +368,7 @@ export default function SnakeGame() {
             onSubmit={(e) => { e.preventDefault(); startRef.current(); }}
             className="w-[min(92vw,420px)] rounded-3xl border border-border bg-card/80 p-8 text-center shadow-glow"
           >
-            <h1 className="font-display text-5xl font-bold tracking-tight text-gradient">neon.io</h1>
+            <h1 className="font-display text-5xl font-bold tracking-tight text-gradient">neon.io<span className="sr-only"> — onlayn neon ilan oyunu</span></h1><p className="mt-1 text-sm font-semibold text-foreground">Neon ilan oyunu</p>
             <p className="mt-2 text-sm text-muted-foreground">
               {state === "dead" ? `Öldün! Son uzunluq: ${score}` : "Ye, böyü, rəqibləri kəs."}
             </p>
