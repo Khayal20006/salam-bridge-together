@@ -17,7 +17,7 @@ type Snake = {
   id: number; name: string; pts: P[]; angle: number; target: number;
   len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; skin?: string; seen?: number; tgt?: P[];
 };
-type Food = { x: number; y: number; r: number; hue: number; v: number };
+type Food = { x: number; y: number; r: number; hue: number; v: number; dead?: boolean };
 
 const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 7.0, TURN = 0.09;
 const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Zəhra", "Shadow", "Murad", "Toxic", "Elvin", "Rəşad", "Nova", "Fidan", "Blitz", "Kamran", "Ruby"];
@@ -158,6 +158,9 @@ export default function SnakeGame() {
       return l;
     };
     const MAX_FOOD = 1300;
+    const CELL = 120, GN = Math.ceil((WORLD * 2 + 400) / CELL);
+    const gc = (v: number) => Math.max(0, Math.min(GN - 1, ((v + WORLD + 200) / CELL) | 0));
+    const grid: Food[][] = Array.from({ length: GN * GN }, () => []); const used: number[] = [];
     const addFood = (x?: number, y?: number, v = 1) => {
       const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
       const f = { ...p, r: 3 + Math.min(v, 4) * 2, hue: Math.floor(rnd(0, 24)), v };
@@ -450,16 +453,16 @@ export default function SnakeGame() {
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
       <canvas ref={cvs} className="block touch-none" />
       {getPaddleEnvironment() === "sandbox" && state !== "play" && <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 bg-accent/80 py-1 text-center text-xs text-accent-foreground">Önizləmədə ödənişlər test rejimindədir (real pul çəkilmir)</div>}
-      <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
+      <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/80 px-3 py-2 text-xs text-foreground">
         🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
       </div>
       {cfg.showFps && (
         <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-card/60 px-2 py-1 text-xs text-foreground">FPS: <b className="text-primary">{fps}</b></div>
       )}
       <button type="button" onClick={() => setShowCfg((v) => !v)} aria-label="Parametrlər"
-        className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground backdrop-blur hover:border-primary">⚙️ Qrafika</button>
+        className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground hover:border-primary">⚙️ Qrafika</button>
       {showCfg && (
-        <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground backdrop-blur">
+        <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground">
           <div className="mb-2 font-display font-bold">Qrafika keyfiyyəti</div>
           <div className="mb-3 grid grid-cols-3 gap-1">
             {(["low", "medium", "high"] as const).map((q) => (
@@ -479,13 +482,13 @@ export default function SnakeGame() {
         </div>
       )}
       {state === "play" && (
-        <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/60 px-4 py-2 font-display text-foreground backdrop-blur">
+        <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/80 px-4 py-2 font-display text-foreground">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Uzunluq</div>
           <div className="text-2xl font-bold text-primary">{score}</div>
         </div>
       )}
       {state !== "play" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/70">
           <form
             onSubmit={(e) => { e.preventDefault(); if (has(preview)) startRef.current(); }}
             className="max-h-[96vh] w-[min(94vw,460px)] overflow-y-auto rounded-3xl border border-border bg-card/85 p-5 text-center shadow-glow"
@@ -559,7 +562,7 @@ export default function SnakeGame() {
                 const n = counts[id] || 0, pct = Math.min(100, (n / ROOM_MAX) * 100);
                 return (
                   <button key={id} type="button" onClick={() => setRoom(id)}
-                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${room === id ? "border-primary bg-primary/10" : "border-border bg-background/50"}`}>
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${room === id ? "border-primary bg-primary/10" : "border-border bg-background/70"}`}>
                     <span className="text-sm font-semibold text-foreground">{flag} {label}</span>
                     <span className="w-28">
                       <span className="block text-right text-[10px] text-muted-foreground">OYUNÇU <b className="text-foreground">{n} / {ROOM_MAX}</b></span>
