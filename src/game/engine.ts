@@ -10,6 +10,7 @@ export const BOOST_SPEED = 420;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 1;
+const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 900,
   FOOD_LIMIT = 1800;
 const NAMES = [
@@ -348,6 +349,10 @@ export class Arena {
         }
       }
     }
+    const foodTargets = new Map<
+      number,
+      { food: Food; snake: Snake; mouth: Point; distance: number }
+    >();
     for (const s of snakes) {
       if (dead.has(s.id)) {
         this.deaths.push({ id: s.id, len: s.len, tick: this.tick });
@@ -357,18 +362,40 @@ export class Arena {
         continue;
       }
       const head = s.pts[0]!,
-        radius = snakeWidth(s) + 14;
+        width = snakeWidth(s);
+      const mouth = {
+        x: head.x + Math.cos(s.angle) * width * 0.8,
+        y: head.y + Math.sin(s.angle) * width * 0.8,
+      };
+      const range = (width + 14) * 3;
       for (const f of foodGrid.query(
-        head.x - radius,
-        head.y - radius,
-        head.x + radius,
-        head.y + radius,
+        mouth.x - range,
+        mouth.y - range,
+        mouth.x + range,
+        mouth.y + range,
       )) {
         if (!this.foods.has(f.id)) continue;
-        if ((f.x - head.x) ** 2 + (f.y - head.y) ** 2 < radius ** 2) {
-          s.len += f.v * FOOD_GROWTH_MULTIPLIER * (s.bot ? 0.7 : 1);
-          this.foods.delete(f.id);
+        const distance = (f.x - mouth.x) ** 2 + (f.y - mouth.y) ** 2;
+        if (distance >= range * range) continue;
+        const target = foodTargets.get(f.id);
+        if (
+          !target ||
+          distance < target.distance - 0.000001 ||
+          (Math.abs(distance - target.distance) <= 0.000001 && s.id < target.snake.id)
+        ) {
+          foodTargets.set(f.id, { food: f, snake: s, mouth, distance });
         }
+      }
+    }
+    // Choose one nearest mouth per food, then move once; the spatial grid stays valid during queries.
+    for (const { food, snake, mouth, distance } of foodTargets.values()) {
+      const eatRadius = snakeWidth(snake) + food.r;
+      if (distance < eatRadius * eatRadius) {
+        snake.len += food.v * FOOD_GROWTH_MULTIPLIER * (snake.bot ? 0.7 : 1);
+        this.foods.delete(food.id);
+      } else {
+        food.x += (mouth.x - food.x) * FOOD_PULL_PER_TICK;
+        food.y += (mouth.y - food.y) * FOOD_PULL_PER_TICK;
       }
     }
     while (this.deaths.length && this.deaths[0]!.tick < this.tick - 300) this.deaths.shift();

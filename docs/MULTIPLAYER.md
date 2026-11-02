@@ -48,6 +48,8 @@ The server publishes 10 snapshots/second. Coordinates are quantized to whole wor
 units; every body point is retained for visible snakes. Distant snakes send their
 head and metadata for the minimap and leaderboard. Food changes are deltas, with a
 full recovery keyframe each second. Missing baselines trigger a resync.
+Nearby food is attracted toward one nearest mouth by the authority. Movement is
+included in food deltas and rendered with the same interpolation timeline as snakes.
 
 The renderer interpolates authoritative frames with a 100 ms jitter buffer and
 never runs collision or food simulation. Canvas resolution is capped by the

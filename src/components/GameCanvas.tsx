@@ -44,7 +44,11 @@ export default function GameCanvas(props: Props) {
       lastHud = 0,
       lastInput = 0;
     let lastFrame = performance.now();
-    const history: { state: Snapshot; at: number }[] = [];
+    const history: {
+      state: Snapshot;
+      at: number;
+      foods: Map<number, Snapshot["foods"][number]>;
+    }[] = [];
     const rendered = new Map<string, Snake>();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = { x: 0, y: 0, z: 0.8 };
@@ -83,7 +87,11 @@ export default function GameCanvas(props: Props) {
           rendered.clear();
         }
         latest = state;
-        history.push({ state, at: performance.now() });
+        history.push({
+          state,
+          at: performance.now(),
+          foods: new Map(state.foods.map((f) => [f.id, f])),
+        });
         if (history.length > 8) history.shift();
         const me = state.snakes.find((s) => s.id === self);
         if (me) {
@@ -271,14 +279,17 @@ export default function GameCanvas(props: Props) {
       ctx.beginPath();
       ctx.arc(0, 0, WORLD, 0, Math.PI * 2);
       ctx.stroke();
-      for (const f of latest?.foods ?? []) {
-        if (Math.abs(f.x - cam.x) > vw || Math.abs(f.y - cam.y) > vh) continue;
+      for (const f of b?.state.foods ?? latest?.foods ?? []) {
+        const previousFood = a?.foods.get(f.id);
+        const x = previousFood ? previousFood.x + (f.x - previousFood.x) * alpha : f.x;
+        const y = previousFood ? previousFood.y + (f.y - previousFood.y) * alpha : f.y;
+        if (Math.abs(x - cam.x) > vw || Math.abs(y - cam.y) > vh) continue;
         if (!cfg.glow) {
           ctx.fillStyle = FOOD_COLORS[f.hue]!;
-          ctx.fillRect(f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+          ctx.fillRect(x - f.r, y - f.r, f.r * 2, f.r * 2);
         } else {
           const size = f.r * 2.5;
-          ctx.drawImage(sprites[f.hue]!, f.x - size, f.y - size, size * 2, size * 2);
+          ctx.drawImage(sprites[f.hue]!, x - size, y - size, size * 2, size * 2);
         }
       }
       ctx.lineCap = "round";

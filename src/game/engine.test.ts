@@ -36,6 +36,35 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it("pulls nearby food toward the mouth before eating it", () => {
+    const arena = new Arena(random(), false),
+      player = snake("a", 0, 0);
+    arena.snakes.set(player.id, player);
+    arena.foods.set(9001, { id: 9001, x: 64, y: 0, v: 0.3, hue: 0, r: 4 });
+    arena.step();
+    expect(arena.foods.get(9001)!.x).toBeLessThan(64);
+    expect(arena.foods.get(9001)!.x).toBeGreaterThan(player.pts[0]!.x);
+    expect(player.len).toBe(20);
+  });
+  it("leaves food outside the attraction range stationary", () => {
+    const arena = new Arena(random(), false);
+    arena.snakes.set("a", snake("a", 0, 0));
+    arena.foods.set(9001, { id: 9001, x: 200, y: 0, v: 0.3, hue: 0, r: 4 });
+    arena.step();
+    expect(arena.foods.get(9001)!.x).toBe(200);
+  });
+  it("pulls contested food toward one mouth regardless of player iteration order", () => {
+    const run = (reverse: boolean) => {
+      const arena = new Arena(random(), false),
+        pair = [snake("a", -50, 0), snake("b", 50, 0, Math.PI)];
+      for (const s of reverse ? pair.reverse() : pair) arena.snakes.set(s.id, s);
+      arena.foods.set(9001, { id: 9001, x: 0, y: 0, v: 0.3, hue: 0, r: 4 });
+      arena.step();
+      return arena.foods.get(9001)!.x;
+    };
+    expect(run(false)).toBeLessThan(0);
+    expect(run(false)).toBeCloseTo(run(true));
+  });
   it("keeps the moving body on the head's route instead of pulling its joints across a turn", () => {
     const arena = new Arena(random(), false),
       player = snake("player", 0, 0);
@@ -165,6 +194,22 @@ describe("authoritative arena", () => {
 });
 
 describe("replication protocol", () => {
+  it("replicates food movement in deltas to both clients", () => {
+    const arena = new Arena(random()),
+      before = arena.snapshot();
+    const a = unpackSnapshot(packSnapshot(before))!,
+      b = unpackSnapshot(packSnapshot(before))!;
+    const food = arena.foods.values().next().value!;
+    food.x += 8;
+    food.y -= 5;
+    arena.tick++;
+    const packet = packSnapshot(arena.snapshot(), before);
+    expect(packet.foods.some((f) => f[0] === food.id)).toBe(true);
+    const first = unpackSnapshot(packet, a)!,
+      second = unpackSnapshot(packet, b)!;
+    expect(first).toEqual(second);
+    expect(first.foods.find((f) => f.id === food.id)!.x).toBe(Math.round(food.x));
+  });
   it("gives two clients identical bots, bodies, food and deaths for the same tick", () => {
     const arena = new Arena(random());
     arena.join("player-a", "A", "fire");

@@ -49,7 +49,18 @@ export function packSnapshot(
       ];
     }),
     foods: current.foods
-      .filter((f) => full || !oldFoods.has(f.id))
+      .filter((f) => {
+        const old = oldFoods.get(f.id);
+        return (
+          full ||
+          !old ||
+          Math.round(old.x) !== Math.round(f.x) ||
+          Math.round(old.y) !== Math.round(f.y) ||
+          old.r !== f.r ||
+          old.hue !== f.hue ||
+          old.v !== f.v
+        );
+      })
       .map((f): PackedFood => [f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]),
     removed: full ? [] : [...oldFoods.keys()].filter((id) => !currentIds.has(id)),
     deaths: current.deaths.map((d) => [d.id, d.len, d.tick]),
