@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      player_progress: {
+        Row: {
+          coins: number
+          owned: string[]
+          skin: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          coins?: number
+          owned?: string[]
+          skin?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          coins?: number
+          owned?: string[]
+          skin?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       skin_purchases: {
         Row: {
           created_at: string
