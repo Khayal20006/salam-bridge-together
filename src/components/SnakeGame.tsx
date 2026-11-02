@@ -165,7 +165,7 @@ export default function SnakeGame() {
     };
     const init = () => {
       snakes = []; foods = [];
-      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.4);
+      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.3);
       for (let i = 0; i < 18; i++) snakes.push(mk(NAMES[i % NAMES.length], true));
     };
     init();
@@ -200,7 +200,12 @@ export default function SnakeGame() {
       s.alive = false;
       const fv = Math.min(8, Math.max(2, (s.len * 1.0) / Math.max(1, s.pts.length / 2)));
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
-      if (s === me) { const add = coinsFor(s.len); setCoins((c) => { const n = c + add; localStorage.setItem("neon-coins", String(n)); return n; }); playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
+      if (s === me) {
+        playing = false; ch.send({ type: "broadcast", event: "d", payload: { k: myKey } });
+        const n = coinsRef.current + coinsFor(s.len);
+        // UI update runs after this frame so the death moment never stalls the render
+        setTimeout(() => { setCoins(n); setState("dead"); persistRef.current(n, ownedRef.current, skinRef.current); }, 0);
+      }
     };
 
     const onMove = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
@@ -265,23 +270,37 @@ export default function SnakeGame() {
         while (s.pts.length > want && s.pts.length > 10) s.pts.pop();
         if (Math.hypot(nh.x, nh.y) > WORLD) kill(s);
       }
-      // eat
+      // eat — food is bucketed into a spatial grid so each snake only checks nearby cells
+      for (let i = 0; i < used.length; i++) grid[used[i]].length = 0; used.length = 0;
+      for (let i = 0; i < foods.length; i++) { const f = foods[i]; const k = gc(f.y) * GN + gc(f.x); const cell = grid[k]; if (!cell.length) used.push(k); cell.push(f); }
+      let ate = false;
       for (const s of snakes) {
-        if (!s.alive) continue; const h = s.pts[0], r = width(s) + 14;
-        for (let i = foods.length - 1; i >= 0; i--) {
-          const f = foods[i]; const dx = f.x - h.x, dy = f.y - h.y; const d = dx * dx + dy * dy;
-          if (d < r * r) { s.len += f.v; foods[i] = foods[foods.length - 1]; foods.pop(); }
-          else if (d < (r * 3) ** 2) { f.x -= dx * 0.12; f.y -= dy * 0.12; }
+        if (!s.alive) continue; const h = s.pts[0], r = width(s) + 14, r2 = r * r, R = r * 3, R2 = R * R, gain = s.bot ? 0.7 : 1;
+        const x0 = gc(h.x - R), x1 = gc(h.x + R), y0 = gc(h.y - R), y1 = gc(h.y + R);
+        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
+          const cell = grid[gy * GN + gx];
+          for (let i = 0; i < cell.length; i++) {
+            const f = cell[i]; if (f.dead) continue; const dx = f.x - h.x, dy = f.y - h.y; const d = dx * dx + dy * dy;
+            if (d < r2) { s.len += f.v * gain; f.dead = true; ate = true; }
+            else if (d < R2) { f.x -= dx * 0.12; f.y -= dy * 0.12; }
+          }
         }
       }
-      // collide
+      if (ate) { let j = 0; for (let i = 0; i < foods.length; i++) if (!foods[i].dead) foods[j++] = foods[i]; foods.length = j; }
+      // collide — bounding box per snake rejects far snakes instantly, then every 2nd point is enough
+      for (const o of all) {
+        let ax = 1e9, ay = 1e9, bx = -1e9, by = -1e9; const ps = o.pts;
+        for (let i = 0; i < ps.length; i++) { const p = ps[i]; if (p.x < ax) ax = p.x; if (p.x > bx) bx = p.x; if (p.y < ay) ay = p.y; if (p.y > by) by = p.y; }
+        o.bb = [ax, ay, bx, by];
+      }
       for (const s of snakes) {
         if (!s.alive) continue; const h = s.pts[0], w = width(s);
         for (const o of all) {
-          if (o === s || !o.alive) continue; const ow = width(o);
-          const oh = o.pts[0]; if ((oh.x - h.x) ** 2 + (oh.y - h.y) ** 2 > (o.pts.length * SEG + 100) ** 2) continue;
-          for (let i = 1; i < o.pts.length; i++) {
-            const p = o.pts[i]; if ((p.x - h.x) ** 2 + (p.y - h.y) ** 2 < (w * 0.6 + ow) ** 2) { kill(s); break; }
+          if (o === s || !o.alive) continue; const ow = width(o), Rr = w * 0.6 + ow, Rr2 = Rr * Rr, b = o.bb;
+          if (h.x < b[0] - Rr || h.x > b[2] + Rr || h.y < b[1] - Rr || h.y > b[3] + Rr) continue;
+          const ps = o.pts, st = Rr > SEG * 1.2 ? 2 : 1;
+          for (let i = 1; i < ps.length; i += st) {
+            const p = ps[i], dx = p.x - h.x, dy = p.y - h.y; if (dx * dx + dy * dy < Rr2) { kill(s); break; }
           }
           if (!s.alive) break;
         }
@@ -294,7 +313,7 @@ export default function SnakeGame() {
         ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, sk: me.skin, p } });
       }
       while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
-      while (foods.length < 900) addFood(undefined, undefined, 0.4);
+      while (foods.length < 900) addFood(undefined, undefined, 0.3);
 
       // camera
       const focus = me && me.alive ? me.pts[0] : cam;
@@ -419,7 +438,7 @@ export default function SnakeGame() {
     finally { setBuying(false); }
   };
   const ownedSkins = SKINS.filter((k) => has(k.id));
-  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); localStorage.setItem("neon-skin", n.id); } };
+  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); persist(coins, owned, n.id); } };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
   const curBg = (cur.type === "bands" || cur.type === "pulse") ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
