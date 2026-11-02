@@ -17,14 +17,14 @@ type Snake = {
   id: number; name: string; pts: P[]; angle: number; target: number;
   len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; skin?: string; seen?: number; tgt?: P[];
 };
-type Food = { x: number; y: number; r: number; hue: number; v: number };
+type Food = { x: number; y: number; r: number; hue: number; v: number; dead?: boolean };
 
 const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 7.0, TURN = 0.09;
 const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Zəhra", "Shadow", "Murad", "Toxic", "Elvin", "Rəşad", "Nova", "Fidan", "Blitz", "Kamran", "Ruby"];
 
 // growth goes mostly into thickness; body length (segment count) grows slowly and is capped
 const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
-const segCount = (len: number) => Math.floor(10 + Math.min(200, Math.sqrt(Math.max(0, len - 10)) * 10));
+const segCount = (len: number) => Math.floor(10 + Math.min(230, Math.sqrt(Math.max(0, len - 10)) * 11.5));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
@@ -50,14 +50,35 @@ export default function SnakeGame() {
   const [skin, setSkin] = useState("hue");
   const skinRef = useRef(skin); skinRef.current = skin;
   useEffect(() => { try { setCoins(+(localStorage.getItem("neon-coins") || 0)); setOwned(JSON.parse(localStorage.getItem("neon-owned") || '["hue"]')); setSkin(localStorage.getItem("neon-skin") || "hue"); } catch { /* ignore */ } }, []);
+  // progress (coins, coin-unlocked skins, selected skin) is saved locally AND to the signed-in account
+  const userRef = useRef<string | null>(null);
+  const coinsRef = useRef(coins); coinsRef.current = coins;
+  const ownedRef = useRef(owned); ownedRef.current = owned;
+  const persist = (c: number, o: string[], s: string) => {
+    try { localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", s); } catch { /* ignore */ }
+    const uid = userRef.current;
+    if (uid) supabase.from("player_progress").upsert({ user_id: uid, coins: Math.max(0, Math.floor(c)), owned: o, skin: s, updated_at: new Date().toISOString() }).then(({ error }) => { if (error) console.error(error); });
+  };
+  const persistRef = useRef(persist); persistRef.current = persist;
+  const syncProgress = async (uid: string) => {
+    const { data, error } = await supabase.from("player_progress").select("coins,owned,skin").eq("user_id", uid).maybeSingle();
+    if (error) { console.error(error); return; }
+    let lc = 0, lo: string[] = ["hue"], ls = "hue", synced = false;
+    try { lc = +(localStorage.getItem("neon-coins") || 0); lo = JSON.parse(localStorage.getItem("neon-owned") || '["hue"]'); ls = localStorage.getItem("neon-skin") || "hue"; synced = localStorage.getItem("neon-synced") === uid; } catch { /* ignore */ }
+    // first time on this device: merge local progress in; afterwards the account is the source of truth
+    const c = data ? (synced ? data.coins : Math.max(data.coins, lc)) : lc;
+    const o = [...new Set(["hue", ...(data?.owned || []), ...(synced && data ? [] : lo)])];
+    const s = data?.skin || ls;
+    try { localStorage.setItem("neon-synced", uid); } catch { /* ignore */ }
+    setCoins(c); setOwned(o); setSkin(s); persistRef.current(c, o, s);
+  };
   const pick = (id: string) => {
     const k = SKIN_BY[id];
-    if (owned.includes(id) || paid.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (owned.includes(id) || paid.includes(id)) { setSkin(id); persist(coins, owned, id); return; }
     if (PAID_SKINS[id]) return;
     if (coins < k.price) return;
     const c = coins - k.price, o = [...owned, id];
-    setCoins(c); setOwned(o); setSkin(id);
-    localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", id);
+    setCoins(c); setOwned(o); setSkin(id); persist(c, o, id);
   };
   const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
   const [preview, setPreview] = useState("hue");
@@ -75,7 +96,12 @@ export default function SnakeGame() {
   const [paid, setPaid] = useState<string[]>([]);
   const loadPaid = async (uid: string) => { const { data } = await supabase.from("skin_purchases").select("skin_id").eq("user_id", uid).eq("environment", getPaddleEnvironment()); setPaid((data || []).map((d) => d.skin_id)); };
   useEffect(() => {
-    const apply = (u: any) => { if (!u) { setUser(null); setPaid([]); return; } const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14); setUser({ id: u.id, email: u.email, name: n, avatar: u.user_metadata?.avatar_url }); loadPaid(u.id); setName((o) => o || n); };
+    const apply = (u: any) => {
+      if (!u) { userRef.current = null; setUser(null); setPaid([]); return; }
+      const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14);
+      setUser({ id: u.id, email: u.email, name: n, avatar: u.user_metadata?.avatar_url }); setName((o) => o || n);
+      if (userRef.current !== u.id) { userRef.current = u.id; loadPaid(u.id); syncProgress(u.id); }
+    };
     supabase.auth.getUser().then(({ data }) => apply(data.user));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => apply(s?.user));
     return () => sub.subscription.unsubscribe();
@@ -109,7 +135,7 @@ export default function SnakeGame() {
     const mk = (nm: string, bot: boolean): Snake => {
       const p = randPos(), a = rnd(0, 6.28);
       const pts = Array.from({ length: 12 }, (_, i) => ({ x: p.x - Math.cos(a) * i * SEG, y: p.y - Math.sin(a) * i * SEG }));
-      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 120) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
+      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 45) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
     };
     // pre-rendered glowing food sprites (one per hue bucket) -> drawImage is far cheaper than arcs + string colors
     const SPR = Array.from({ length: 24 }, (_, i) => {
@@ -132,6 +158,9 @@ export default function SnakeGame() {
       return l;
     };
     const MAX_FOOD = 1300;
+    const CELL = 120, GN = Math.ceil((WORLD * 2 + 400) / CELL);
+    const gc = (v: number) => Math.max(0, Math.min(GN - 1, ((v + WORLD + 200) / CELL) | 0));
+    const grid: Food[][] = Array.from({ length: GN * GN }, () => []); const used: number[] = [];
     const addFood = (x?: number, y?: number, v = 1) => {
       const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
       const f = { ...p, r: 3 + Math.min(v, 4) * 2, hue: Math.floor(rnd(0, 24)), v };
@@ -139,7 +168,7 @@ export default function SnakeGame() {
     };
     const init = () => {
       snakes = []; foods = [];
-      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.4);
+      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.3);
       for (let i = 0; i < 18; i++) snakes.push(mk(NAMES[i % NAMES.length], true));
     };
     init();
@@ -174,7 +203,12 @@ export default function SnakeGame() {
       s.alive = false;
       const fv = Math.min(8, Math.max(2, (s.len * 1.0) / Math.max(1, s.pts.length / 2)));
       for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
-      if (s === me) { const add = coinsFor(s.len); setCoins((c) => { const n = c + add; localStorage.setItem("neon-coins", String(n)); return n; }); playing = false; setState("dead"); ch.send({ type: "broadcast", event: "d", payload: { k: myKey } }); }
+      if (s === me) {
+        playing = false; ch.send({ type: "broadcast", event: "d", payload: { k: myKey } });
+        const n = coinsRef.current + coinsFor(s.len);
+        // UI update runs after this frame so the death moment never stalls the render
+        setTimeout(() => { setCoins(n); setState("dead"); persistRef.current(n, ownedRef.current, skinRef.current); }, 0);
+      }
     };
 
     const onMove = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
@@ -239,23 +273,37 @@ export default function SnakeGame() {
         while (s.pts.length > want && s.pts.length > 10) s.pts.pop();
         if (Math.hypot(nh.x, nh.y) > WORLD) kill(s);
       }
-      // eat
+      // eat — food is bucketed into a spatial grid so each snake only checks nearby cells
+      for (let i = 0; i < used.length; i++) grid[used[i]].length = 0; used.length = 0;
+      for (let i = 0; i < foods.length; i++) { const f = foods[i]; const k = gc(f.y) * GN + gc(f.x); const cell = grid[k]; if (!cell.length) used.push(k); cell.push(f); }
+      let ate = false;
       for (const s of snakes) {
-        if (!s.alive) continue; const h = s.pts[0], r = width(s) + 14;
-        for (let i = foods.length - 1; i >= 0; i--) {
-          const f = foods[i]; const dx = f.x - h.x, dy = f.y - h.y; const d = dx * dx + dy * dy;
-          if (d < r * r) { s.len += f.v; foods[i] = foods[foods.length - 1]; foods.pop(); }
-          else if (d < (r * 3) ** 2) { f.x -= dx * 0.12; f.y -= dy * 0.12; }
+        if (!s.alive) continue; const h = s.pts[0], r = width(s) + 14, r2 = r * r, R = r * 3, R2 = R * R, gain = s.bot ? 0.7 : 1;
+        const x0 = gc(h.x - R), x1 = gc(h.x + R), y0 = gc(h.y - R), y1 = gc(h.y + R);
+        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
+          const cell = grid[gy * GN + gx];
+          for (let i = 0; i < cell.length; i++) {
+            const f = cell[i]; if (f.dead) continue; const dx = f.x - h.x, dy = f.y - h.y; const d = dx * dx + dy * dy;
+            if (d < r2) { s.len += f.v * gain; f.dead = true; ate = true; }
+            else if (d < R2) { f.x -= dx * 0.12; f.y -= dy * 0.12; }
+          }
         }
       }
-      // collide
+      if (ate) { let j = 0; for (let i = 0; i < foods.length; i++) if (!foods[i].dead) foods[j++] = foods[i]; foods.length = j; }
+      // collide — bounding box per snake rejects far snakes instantly, then every 2nd point is enough
+      for (const o of all) {
+        let ax = 1e9, ay = 1e9, bx = -1e9, by = -1e9; const ps = o.pts;
+        for (let i = 0; i < ps.length; i++) { const p = ps[i]; if (p.x < ax) ax = p.x; if (p.x > bx) bx = p.x; if (p.y < ay) ay = p.y; if (p.y > by) by = p.y; }
+        o.bb = [ax, ay, bx, by];
+      }
       for (const s of snakes) {
         if (!s.alive) continue; const h = s.pts[0], w = width(s);
         for (const o of all) {
-          if (o === s || !o.alive) continue; const ow = width(o);
-          const oh = o.pts[0]; if ((oh.x - h.x) ** 2 + (oh.y - h.y) ** 2 > (o.pts.length * SEG + 100) ** 2) continue;
-          for (let i = 1; i < o.pts.length; i++) {
-            const p = o.pts[i]; if ((p.x - h.x) ** 2 + (p.y - h.y) ** 2 < (w * 0.6 + ow) ** 2) { kill(s); break; }
+          if (o === s || !o.alive) continue; const ow = width(o), Rr = w * 0.6 + ow, Rr2 = Rr * Rr, b = o.bb;
+          if (h.x < b[0] - Rr || h.x > b[2] + Rr || h.y < b[1] - Rr || h.y > b[3] + Rr) continue;
+          const ps = o.pts, st = Rr > SEG * 1.2 ? 2 : 1;
+          for (let i = 1; i < ps.length; i += st) {
+            const p = ps[i], dx = p.x - h.x, dy = p.y - h.y; if (dx * dx + dy * dy < Rr2) { kill(s); break; }
           }
           if (!s.alive) break;
         }
@@ -268,7 +316,7 @@ export default function SnakeGame() {
         ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, sk: me.skin, p } });
       }
       while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
-      while (foods.length < 900) addFood(undefined, undefined, 0.4);
+      while (foods.length < 900) addFood(undefined, undefined, 0.3);
 
       // camera
       const focus = me && me.alive ? me.pts[0] : cam;
@@ -393,7 +441,7 @@ export default function SnakeGame() {
     finally { setBuying(false); }
   };
   const ownedSkins = SKINS.filter((k) => has(k.id));
-  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); localStorage.setItem("neon-skin", n.id); } };
+  const cycle = (d: number) => { const i = SKINS.findIndex((k) => k.id === preview); const n = SKINS[(i + d + SKINS.length) % SKINS.length]; setPreview(n.id); if (has(n.id)) { setSkin(n.id); persist(coins, owned, n.id); } };
   const cur = SKIN_BY[preview] || SKIN_BY.hue;
   const curBg = (cur.type === "bands" || cur.type === "pulse") ? `linear-gradient(${cur.colors.join(",")})` : cur.type !== "hue" ? `repeating-linear-gradient(90deg,${cur.colors.map((c, i) => `${c} ${i * 14}px ${(i + 1) * 14}px`).join(",")})` : cur.colors[0];
   const google = async () => { const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (r.error) { console.error(r.error); setAuthMsg("Google ilə giriş alınmadı — bir az sonra yenidən yoxla."); setTimeout(() => setAuthMsg(""), 4000); } };
@@ -405,16 +453,16 @@ export default function SnakeGame() {
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
       <canvas ref={cvs} className="block touch-none" />
       {getPaddleEnvironment() === "sandbox" && state !== "play" && <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 bg-accent/80 py-1 text-center text-xs text-accent-foreground">Önizləmədə ödənişlər test rejimindədir (real pul çəkilmir)</div>}
-      <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/60 px-3 py-2 text-xs text-foreground backdrop-blur">
+      <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/80 px-3 py-2 text-xs text-foreground">
         🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
       </div>
       {cfg.showFps && (
         <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-card/60 px-2 py-1 text-xs text-foreground">FPS: <b className="text-primary">{fps}</b></div>
       )}
       <button type="button" onClick={() => setShowCfg((v) => !v)} aria-label="Parametrlər"
-        className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground backdrop-blur hover:border-primary">⚙️ Qrafika</button>
+        className="absolute bottom-16 left-4 z-20 rounded-xl border border-border bg-card/70 px-3 py-2 text-sm text-foreground hover:border-primary">⚙️ Qrafika</button>
       {showCfg && (
-        <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground backdrop-blur">
+        <div className="absolute bottom-28 left-4 z-20 w-64 rounded-2xl border border-border bg-card/90 p-4 text-sm text-foreground">
           <div className="mb-2 font-display font-bold">Qrafika keyfiyyəti</div>
           <div className="mb-3 grid grid-cols-3 gap-1">
             {(["low", "medium", "high"] as const).map((q) => (
@@ -434,13 +482,13 @@ export default function SnakeGame() {
         </div>
       )}
       {state === "play" && (
-        <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/60 px-4 py-2 font-display text-foreground backdrop-blur">
+        <div className="pointer-events-none absolute left-4 top-4 rounded-xl bg-card/80 px-4 py-2 font-display text-foreground">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Uzunluq</div>
           <div className="text-2xl font-bold text-primary">{score}</div>
         </div>
       )}
       {state !== "play" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/70">
           <form
             onSubmit={(e) => { e.preventDefault(); if (has(preview)) startRef.current(); }}
             className="max-h-[96vh] w-[min(94vw,460px)] overflow-y-auto rounded-3xl border border-border bg-card/85 p-5 text-center shadow-glow"
@@ -514,7 +562,7 @@ export default function SnakeGame() {
                 const n = counts[id] || 0, pct = Math.min(100, (n / ROOM_MAX) * 100);
                 return (
                   <button key={id} type="button" onClick={() => setRoom(id)}
-                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${room === id ? "border-primary bg-primary/10" : "border-border bg-background/50"}`}>
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${room === id ? "border-primary bg-primary/10" : "border-border bg-background/70"}`}>
                     <span className="text-sm font-semibold text-foreground">{flag} {label}</span>
                     <span className="w-28">
                       <span className="block text-right text-[10px] text-muted-foreground">OYUNÇU <b className="text-foreground">{n} / {ROOM_MAX}</b></span>
