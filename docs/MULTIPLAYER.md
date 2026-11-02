@@ -48,7 +48,10 @@ full recovery keyframe each second. Missing baselines trigger a resync.
 
 The renderer interpolates authoritative frames with a 100 ms jitter buffer and
 never runs collision or food simulation. Canvas resolution is capped by the
-graphics setting. Glow sprites and name labels are cached, labels have a bounded
+graphics setting. Head rotation follows the shortest arc between snapshots;
+body outlines and skin sections share continuous quadratic curves. The authority
+eases angular velocity and limits curvature by body thickness to avoid abrupt folds.
+Glow sprites and name labels are cached, labels have a bounded
 cache, and low quality reduces decorative work. Input is coalesced to 30 messages
 per second; losing focus releases boost. Slow sockets are disconnected rather
 than building unbounded outbound queues.

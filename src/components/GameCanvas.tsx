@@ -3,6 +3,7 @@ import { SKIN_BY, SKINS } from "@/lib/skins";
 import type { GameConfig } from "@/lib/game-state";
 import { connectArena } from "@/game/connection";
 import { WORLD, SEG, snakeWidth, cloneSnake, type Snake, type Snapshot } from "@/game/engine";
+import { interpolateAngle, traceBodyCurve } from "@/game/movement";
 
 type Props = {
   room: string;
@@ -172,12 +173,7 @@ export default function GameCanvas(props: Props) {
 
     const path = (snake: Snake) => {
       ctx.beginPath();
-      const tail = snake.pts.at(-1)!;
-      ctx.moveTo(tail.x, tail.y);
-      for (let i = snake.pts.length - 2; i >= 0; i--) {
-        const p = snake.pts[i]!;
-        ctx.lineTo(p.x, p.y);
-      }
+      traceBodyCurve(ctx, snake.pts);
     };
     const frame = (now: number) => {
       const cfg = latestProps.current.config,
@@ -220,7 +216,7 @@ export default function GameCanvas(props: Props) {
         shown.boost = target.boost;
         shown.skin = target.skin;
         shown.name = target.name;
-        shown.angle = target.angle;
+        shown.angle = interpolateAngle(source.angle, target.angle, alpha);
         shown.hue = target.hue;
         while (shown.pts.length < target.pts.length)
           shown.pts.push({ ...target.pts[shown.pts.length]! });
@@ -328,18 +324,10 @@ export default function GameCanvas(props: Props) {
             skin.type === "stripes" || cfg.quality === "low" ? 0 : Math.floor(now / 90) % period;
           for (let j = 0; j < colors.length; j++) {
             ctx.beginPath();
-            for (
-              let i = ((j * stride + shift) % period) - period;
-              i < s.pts.length - 1;
-              i += period
-            ) {
+            for (let i = ((j * stride + shift) % period) - period; i < s.pts.length; i += period) {
               const start = Math.max(0, i),
-                p = s.pts[start]!;
-              ctx.moveTo(p.x, p.y);
-              for (let k = start + 1; k <= Math.min(i + stride, s.pts.length - 1); k++) {
-                const q = s.pts[k]!;
-                ctx.lineTo(q.x, q.y);
-              }
+                end = Math.min(i + stride - 1, s.pts.length - 1);
+              if (end >= start) traceBodyCurve(ctx, s.pts, start, end);
             }
             ctx.strokeStyle =
               skin.type === "anim"

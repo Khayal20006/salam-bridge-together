@@ -1,3 +1,5 @@
+import { smoothTurn } from "./movement.ts";
+
 export const WORLD = 3000;
 export const STEP_MS = 1000 / 30;
 export const SEG = 8;
@@ -40,6 +42,7 @@ export type Snake = {
   pts: Point[];
   angle: number;
   target: number;
+  turnVelocity?: number;
   len: number;
   hue: number;
   bot: boolean;
@@ -242,11 +245,16 @@ export class Arena {
         }
         if (Math.hypot(head.x, head.y) > WORLD - 300) s.target = Math.atan2(-head.y, -head.x);
       }
-      const turn = Math.atan2(Math.sin(s.target - s.angle), Math.cos(s.target - s.angle));
       s.boost = s.boost && s.len > 12;
-      const maxTurn = (TURN_RATE / 30) * (s.boost ? BOOST_TURN_MULTIPLIER : 1);
-      s.angle += Math.max(-maxTurn, Math.min(maxTurn, turn));
-      const speed = (s.boost ? BOOST_SPEED : BASE_SPEED) / 30;
+      const speedPerSecond = s.boost ? BOOST_SPEED : BASE_SPEED;
+      const maxRate = Math.min(
+        TURN_RATE * (s.boost ? BOOST_TURN_MULTIPLIER : 1),
+        speedPerSecond / (snakeWidth(s) * 1.6),
+      );
+      const steering = smoothTurn(s.angle, s.target, s.turnVelocity ?? 0, maxRate, STEP_MS / 1000);
+      s.angle = steering.angle;
+      s.turnVelocity = steering.velocity;
+      const speed = (speedPerSecond * STEP_MS) / 1000;
       if (s.boost) {
         s.len = Math.max(10, s.len - 0.16);
         if (this.tick % 5 === 0) this.food({ ...s.pts.at(-1)! }, 0.5);
