@@ -87,7 +87,7 @@ describe("authoritative arena", () => {
     arena.snakes.set("b", snake("b", 25, 0, Math.PI));
     arena.foods.set(9001, { id: 9001, x: 0, y: 0, v: 10, hue: 0, r: 4 });
     arena.step();
-    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 30]);
+    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 36]);
     expect(arena.foods.has(9001)).toBe(false);
   });
   it("ignores malformed and out-of-order input instead of accepting positions", () => {

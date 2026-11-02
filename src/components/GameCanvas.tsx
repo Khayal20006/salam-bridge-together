@@ -47,6 +47,15 @@ export default function GameCanvas(props: Props) {
     const rendered = new Map<string, Snake>();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = { x: 0, y: 0, z: 0.8 };
+    const steeringAngle = () => {
+      const snake = rendered.get(self),
+        head = snake?.pts[0];
+      const x = innerWidth / 2 + ((head?.x ?? cam.x) - cam.x) * cam.z;
+      const y = innerHeight / 2 + ((head?.y ?? cam.y) - cam.y) * cam.z;
+      const dx = mouse.x - x,
+        dy = mouse.y - y;
+      return dx * dx + dy * dy < 64 ? (snake?.angle ?? 0) : Math.atan2(dy, dx);
+    };
     const labels = new Map<string, HTMLCanvasElement>();
     const bg =
       getComputedStyle(document.documentElement).getPropertyValue("--game-bg").trim() || "#0b0f1a";
@@ -112,20 +121,27 @@ export default function GameCanvas(props: Props) {
       const profile = latestProps.current.profile();
       connection.play(profile.name.trim() || "Sən", profile.skin);
     };
+    const sendInput = (force = false) => {
+      const now = performance.now();
+      if (!active || (!force && now - lastInput < 1000 / 30)) return;
+      connection.input(steeringAngle(), mouse.down);
+      lastInput = now;
+    };
     const move = (e: PointerEvent) => {
       if (e.pointerType !== "mouse" && e.target !== c) return;
       mouse.x = e.clientX;
       mouse.y = e.clientY;
+      sendInput();
     };
     const down = (e: PointerEvent) => {
       if (e.target !== c || e.button !== 0) return;
       move(e);
       mouse.down = true;
+      sendInput(true);
     };
     const up = () => {
       mouse.down = false;
-      if (active)
-        connection.input(Math.atan2(mouse.y - innerHeight / 2, mouse.x - innerWidth / 2), false);
+      sendInput(true);
     };
     const keyboard = (e: KeyboardEvent) => {
       if (
@@ -136,7 +152,11 @@ export default function GameCanvas(props: Props) {
       )
         return;
       e.preventDefault();
-      mouse.down = e.type === "keydown";
+      const boost = e.type === "keydown";
+      if (mouse.down !== boost) {
+        mouse.down = boost;
+        sendInput(true);
+      }
     };
     const visibility = () => {
       if (document.hidden) up();
@@ -170,13 +190,7 @@ export default function GameCanvas(props: Props) {
         c.width = w;
         c.height = h;
       }
-      if (active && now - lastInput >= 50) {
-        connection.input(
-          Math.atan2(mouse.y - innerHeight / 2, mouse.x - innerWidth / 2),
-          mouse.down,
-        );
-        lastInput = now;
-      }
+      sendInput();
       // A short interpolation buffer absorbs jitter. Deaths and food ownership always come from authority.
       const renderAt = now - 100;
       let a = history[0],

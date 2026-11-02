@@ -5,6 +5,9 @@ export const MAX_PLAYERS = 50;
 export const BOT_COUNT = 18;
 export const BASE_SPEED = 156;
 export const BOOST_SPEED = 420;
+const TURN_RATE = 8.4;
+const BOOST_TURN_MULTIPLIER = 1.2;
+const FOOD_GROWTH_MULTIPLIER = 1.6;
 const FOOD_TARGET = 900,
   FOOD_LIMIT = 1800;
 const NAMES = [
@@ -240,8 +243,9 @@ export class Arena {
         if (Math.hypot(head.x, head.y) > WORLD - 300) s.target = Math.atan2(-head.y, -head.x);
       }
       const turn = Math.atan2(Math.sin(s.target - s.angle), Math.cos(s.target - s.angle));
-      s.angle += Math.max(-0.18, Math.min(0.18, turn));
       s.boost = s.boost && s.len > 12;
+      const maxTurn = (TURN_RATE / 30) * (s.boost ? BOOST_TURN_MULTIPLIER : 1);
+      s.angle += Math.max(-maxTurn, Math.min(maxTurn, turn));
       const speed = (s.boost ? BOOST_SPEED : BASE_SPEED) / 30;
       if (s.boost) {
         s.len = Math.max(10, s.len - 0.16);
@@ -335,7 +339,7 @@ export class Arena {
       )) {
         if (!this.foods.has(f.id)) continue;
         if ((f.x - head.x) ** 2 + (f.y - head.y) ** 2 < radius ** 2) {
-          s.len += f.v * (s.bot ? 0.7 : 1);
+          s.len += f.v * FOOD_GROWTH_MULTIPLIER * (s.bot ? 0.7 : 1);
           this.foods.delete(f.id);
         }
       }
