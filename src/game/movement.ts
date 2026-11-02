@@ -6,6 +6,46 @@ export const angleDelta = (from: number, to: number) =>
 export const interpolateAngle = (from: number, to: number, alpha: number) =>
   from + angleDelta(from, to) * alpha;
 
+/** Sample the travelled head path by distance, so every bend travels all the way to the tail. */
+export class BodyTrail {
+  private points: Point[];
+
+  constructor(body: Point[]) {
+    this.points = body.map((p) => ({ ...p }));
+  }
+
+  advance(head: Point, count: number, spacing: number): Point[] {
+    const first = this.points[0];
+    if (!first || Math.hypot(head.x - first.x, head.y - first.y) > 0.000001) {
+      this.points.unshift({ ...head });
+    }
+    const body: Point[] = [{ ...head }];
+    let travelled = 0,
+      nextSample = spacing;
+    const keepDistance = (count + 2) * spacing;
+    for (let i = 1; i < this.points.length; i++) {
+      const a = this.points[i - 1]!,
+        b = this.points[i]!;
+      const dx = b.x - a.x,
+        dy = b.y - a.y,
+        length = Math.hypot(dx, dy);
+      if (length < 0.000001) continue;
+      while (body.length < count && nextSample <= travelled + length + 0.000001) {
+        const t = Math.max(0, Math.min(1, (nextSample - travelled) / length));
+        body.push({ x: a.x + dx * t, y: a.y + dy * t });
+        nextSample += spacing;
+      }
+      travelled += length;
+      if (travelled >= keepDistance) {
+        this.points.length = i + 1;
+        break;
+      }
+    }
+    // Growth extends as more real path is travelled; it never creates a stack of stationary joints.
+    return body;
+  }
+}
+
 /** Ease angular velocity so steering changes travel through a bend instead of forming a hinge. */
 export function smoothTurn(
   angle: number,

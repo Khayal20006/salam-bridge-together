@@ -1,4 +1,4 @@
-import { smoothTurn } from "./movement.ts";
+import { BodyTrail, smoothTurn } from "./movement.ts";
 
 export const WORLD = 3000;
 export const STEP_MS = 1000 / 30;
@@ -9,7 +9,7 @@ export const BASE_SPEED = 156;
 export const BOOST_SPEED = 420;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
-const FOOD_GROWTH_MULTIPLIER = 1.6;
+const FOOD_GROWTH_MULTIPLIER = 1;
 const FOOD_TARGET = 900,
   FOOD_LIMIT = 1800;
 const NAMES = [
@@ -52,10 +52,9 @@ export type Snake = {
 export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
-export const snakeWidth = (s: Pick<Snake, "len">) =>
-  7 + Math.min(34, Math.sqrt(Math.max(0, s.len)) * 1.15);
+export const snakeWidth = (_s: Pick<Snake, "len">) => 11;
 export const segmentCount = (len: number) =>
-  Math.floor(10 + Math.min(230, Math.sqrt(Math.max(0, len - 10)) * 11.5));
+  Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.4));
 export const cloneSnake = (s: Snake): Snake => ({ ...s, pts: s.pts.map((p) => ({ ...p })) });
 
 export function pointSegmentDistanceSquared(p: Point, a: Point, b: Point): number {
@@ -115,6 +114,7 @@ export class Arena {
   tick = 0;
   private foodId = 0;
   private inputs = new Map<string, number>();
+  private trails = new Map<string, BodyTrail>();
   private random: () => number;
   constructor(random: () => number = Math.random, initialize = true) {
     this.random = random;
@@ -177,6 +177,7 @@ export class Arena {
         skin,
       };
       this.snakes.set(id, s);
+      this.trails.set(id, new BodyTrail(s.pts));
       this.inputs.delete(id);
       return s;
     }
@@ -190,6 +191,7 @@ export class Arena {
   leave(id: string): void {
     this.snakes.delete(id);
     this.inputs.delete(id);
+    this.trails.delete(id);
   }
   input(id: string, value: Input): void {
     const s = this.snakes.get(id);
@@ -259,18 +261,16 @@ export class Arena {
         s.len = Math.max(10, s.len - 0.16);
         if (this.tick % 5 === 0) this.food({ ...s.pts.at(-1)! }, 0.5);
       }
-      s.pts[0] = { x: head.x + Math.cos(s.angle) * speed, y: head.y + Math.sin(s.angle) * speed };
-      for (let i = 1; i < s.pts.length; i++) {
-        const a = s.pts[i - 1]!,
-          b = s.pts[i]!,
-          dx = b.x - a.x,
-          dy = b.y - a.y,
-          length = Math.hypot(dx, dy);
-        if (length > SEG) {
-          b.x = a.x + (dx / length) * SEG;
-          b.y = a.y + (dy / length) * SEG;
-        }
+      let trail = this.trails.get(s.id);
+      if (!trail) {
+        trail = new BodyTrail(s.pts);
+        this.trails.set(s.id, trail);
       }
+      s.pts = trail.advance(
+        { x: head.x + Math.cos(s.angle) * speed, y: head.y + Math.sin(s.angle) * speed },
+        segmentCount(s.len),
+        SEG,
+      );
     }
     // All deaths are decided from the same tick, then applied together.
     const dead = new Set<string>();
@@ -291,6 +291,7 @@ export class Arena {
       }
     }
     const snakes = [...this.snakes.values()];
+    const headDefeats = new Map<string, Set<string>>();
     for (let i = 0; i < snakes.length; i++) {
       const s = snakes[i]!,
         head = s.pts[0]!,
@@ -310,10 +311,27 @@ export class Arena {
           ) <
           (radius + snakeWidth(other) * 0.6) ** 2
         ) {
-          dead.add(s.id);
-          dead.add(other.id);
+          const difference = s.len - other.len;
+          const winner =
+            difference > 0.000001 || (Math.abs(difference) <= 0.000001 && s.id < other.id)
+              ? s
+              : other;
+          const loser = winner === s ? other : s;
+          dead.add(loser.id);
+          let defeated = headDefeats.get(winner.id);
+          if (!defeated) {
+            defeated = new Set();
+            headDefeats.set(winner.id, defeated);
+          }
+          defeated.add(loser.id);
         }
       }
+    }
+    for (const s of snakes) {
+      if (dead.has(s.id)) continue;
+      const head = s.pts[0]!,
+        old = previous.get(s.id)!,
+        radius = snakeWidth(s) * 0.6;
       for (const body of bodies.query(
         Math.min(old.x, head.x) - radius,
         Math.min(old.y, head.y) - radius,
@@ -322,6 +340,7 @@ export class Arena {
       )) {
         if (
           body.id !== s.id &&
+          !headDefeats.get(s.id)?.has(body.id) &&
           segmentsDistanceSquared(old, head, body.a, body.b) < (radius + body.radius) ** 2
         ) {
           dead.add(s.id);
@@ -351,9 +370,6 @@ export class Arena {
           this.foods.delete(f.id);
         }
       }
-      const want = segmentCount(s.len);
-      while (s.pts.length < want) s.pts.push({ ...s.pts.at(-1)! });
-      s.pts.length = want;
     }
     while (this.deaths.length && this.deaths[0]!.tick < this.tick - 300) this.deaths.shift();
     this.replenishFood();
@@ -372,7 +388,11 @@ export class Arena {
     this.snakes.clear();
     this.foods.clear();
     this.inputs.clear();
-    for (const s of snapshot.snakes) this.snakes.set(s.id, cloneSnake(s));
+    this.trails.clear();
+    for (const s of snapshot.snakes) {
+      this.snakes.set(s.id, cloneSnake(s));
+      this.trails.set(s.id, new BodyTrail(s.pts));
+    }
     this.foodId = 0;
     for (const f of snapshot.foods) {
       this.foods.set(f.id, { ...f });

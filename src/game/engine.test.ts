@@ -6,6 +6,7 @@ import {
   segmentCount,
   snakeWidth,
   segmentsDistanceSquared,
+  pointSegmentDistanceSquared,
   type Snake,
 } from "./engine";
 import { packSnapshot, unpackSnapshot } from "./protocol";
@@ -35,6 +36,25 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it("keeps the moving body on the head's route instead of pulling its joints across a turn", () => {
+    const arena = new Arena(random(), false),
+      player = snake("player", 0, 0);
+    player.len = 10;
+    const route = player.pts.map((p) => ({ ...p }));
+    arena.snakes.set(player.id, player);
+    for (let tick = 0; tick < 12; tick++) {
+      arena.input(player.id, { seq: tick, angle: Math.PI / 2, boost: false });
+      arena.step();
+      route.unshift({ ...player.pts[0]! });
+      for (const p of player.pts) {
+        const distance = Math.min(
+          ...route.slice(1).map((b, i) => pointSegmentDistanceSquared(p, route[i]!, b)),
+        );
+        expect(distance).toBeLessThan(0.00000001);
+      }
+    }
+    expect(player.pts[4]!.y).toBeGreaterThan(0);
+  });
   it("uses a fixed 33.333ms tick", () => {
     expect(STEP_MS).toBeCloseTo(33.33333, 4);
   });
@@ -52,16 +72,40 @@ describe("authoritative arena", () => {
       }
     }
   });
-  it("resolves a head-on collision in the same tick, regardless of insertion order", () => {
+  it("selects one head-on survivor in the same tick, regardless of insertion order", () => {
     function run(reverse: boolean) {
       const arena = new Arena(random(), false);
       const pair = [snake("a", -9, 0), snake("b", 9, 0, Math.PI)];
       for (const s of reverse ? pair.reverse() : pair) arena.snakes.set(s.id, s);
       arena.step();
-      expect(arena.snakes.size).toBe(0);
+      expect([...arena.snakes.keys()]).toEqual(["a"]);
+      expect(arena.deaths.map((d) => d.id)).toEqual(["b"]);
       return arena.deaths.sort((a, b) => a.id.localeCompare(b.id));
     }
     expect(run(false)).toEqual(run(true));
+  });
+  it("lets the larger snake win head-on without being killed again by the defeated snake's neck", () => {
+    for (const reverse of [false, true]) {
+      const arena = new Arena(random(), false);
+      const a = snake("a", -9, 0),
+        b = snake("b", 9, 0, Math.PI);
+      b.len = 40;
+      for (const s of reverse ? [b, a] : [a, b]) arena.snakes.set(s.id, s);
+      arena.step();
+      expect([...arena.snakes.keys()]).toEqual(["b"]);
+      expect(arena.deaths.map((d) => d.id)).toEqual(["a"]);
+    }
+  });
+  it("still checks the head-on winner against unrelated bodies", () => {
+    const arena = new Arena(random(), false);
+    const a = snake("a", -9, 0),
+      b = snake("b", 9, 0, Math.PI);
+    b.len = 40;
+    const wall = snake("wall", 20, -100, -Math.PI / 2);
+    wall.pts = Array.from({ length: 26 }, (_, i) => ({ x: 20, y: -100 + i * 8 }));
+    for (const s of [a, b, wall]) arena.snakes.set(s.id, s);
+    arena.step();
+    expect(arena.deaths.some((d) => d.id === "b")).toBe(true);
   });
   it("detects the swept head path crossing a body, even when endpoints miss", () => {
     expect(
@@ -87,7 +131,7 @@ describe("authoritative arena", () => {
     arena.snakes.set("b", snake("b", 25, 0, Math.PI));
     arena.foods.set(9001, { id: 9001, x: 0, y: 0, v: 10, hue: 0, r: 4 });
     arena.step();
-    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 36]);
+    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 30]);
     expect(arena.foods.has(9001)).toBe(false);
   });
   it("ignores malformed and out-of-order input instead of accepting positions", () => {
@@ -103,7 +147,12 @@ describe("authoritative arena", () => {
   it("caps body detail as length increases", () => {
     expect(segmentCount(10)).toBe(10);
     expect(segmentCount(1_000_000)).toBe(240);
-    expect(snakeWidth({ len: 1_000_000 })).toBe(41);
+    expect(snakeWidth({ len: 1_000_000 })).toBe(snakeWidth({ len: 10 }));
+  });
+  it("grows gradually in length without thickening after food", () => {
+    expect(segmentCount(10.3) - segmentCount(10)).toBeLessThanOrEqual(1);
+    expect(segmentCount(13) - segmentCount(10)).toBeLessThanOrEqual(5);
+    expect(snakeWidth({ len: 13 })).toBe(snakeWidth({ len: 10 }));
   });
   it("transfers the exact simulation when authority changes", () => {
     const original = new Arena(random());

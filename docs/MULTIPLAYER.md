@@ -8,13 +8,16 @@ send an authoritative position, length, death or food claim.
 
 The simulation advances at 30 fixed steps per second (33.333 ms). Collision checks
 cover the head's swept movement against body segments, and relative swept motion
-for head-on collisions. Head-on contact kills both snakes in the same tick. All
+for head-on collisions. Head-on contact kills the smaller snake; equal-length
+snakes use a stable ID tie-break so input arrival order cannot choose the winner.
+The winner is not killed again by the defeated snake's neck in that tick. All
 deaths are collected before they are applied, so iteration order and packet arrival
 order cannot decide the winner. A spatial grid limits body and food queries.
 
 New snakes must have clearance along their entire body. If a safe location cannot
 be found, spawning is rejected rather than placing a snake inside another one.
-Body detail is capped at 240 points and thickness at 41 world units.
+Body detail is capped at 240 points. Eating increases length gradually while the
+body radius stays at 11 world units; food does not increase thickness.
 
 ## Transports
 
@@ -51,6 +54,8 @@ never runs collision or food simulation. Canvas resolution is capped by the
 graphics setting. Head rotation follows the shortest arc between snapshots;
 body outlines and skin sections share continuous quadratic curves. The authority
 eases angular velocity and limits curvature by body thickness to avoid abrupt folds.
+Body segments sample the head's travelled path at fixed distances, so a turn
+propagates through the entire body and tail. Growth uses newly travelled space.
 Glow sprites and name labels are cached, labels have a bounded
 cache, and low quality reduces decorative work. Input is coalesced to 30 messages
 per second; losing focus releases boost. Slow sockets are disconnected rather

@@ -1,7 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { angleDelta, interpolateAngle, smoothTurn, traceBodyCurve } from "./movement";
+import { BodyTrail, angleDelta, interpolateAngle, smoothTurn, traceBodyCurve } from "./movement";
 
 describe("fluid snake movement", () => {
+  it("moves the turn through every body segment and the tail along the head's actual route", () => {
+    const history = Array.from({ length: 8 }, (_, i) => ({ x: 0 - i * 8, y: 0 }));
+    const trail = new BodyTrail(history);
+    const square = [
+      { x: 8, y: 0 },
+      { x: 16, y: 0 },
+      { x: 16, y: 8 },
+      { x: 16, y: 16 },
+      { x: 8, y: 16 },
+      { x: 0, y: 16 },
+      { x: 0, y: 8 },
+      { x: 0, y: 0 },
+    ];
+    for (let i = 0; i < 32; i++) {
+      const head = square[i % square.length]!;
+      history.unshift({ ...head });
+      expect(trail.advance(head, 8, 8)).toEqual(history.slice(0, 8));
+    }
+  });
+  it("keeps spacing when the head travels farther than one segment in a boosted tick", () => {
+    const trail = new BodyTrail([
+      { x: 0, y: 0 },
+      { x: -8, y: 0 },
+      { x: -16, y: 0 },
+    ]);
+    expect(trail.advance({ x: 20, y: 0 }, 3, 8)).toEqual([
+      { x: 20, y: 0 },
+      { x: 12, y: 0 },
+      { x: 4, y: 0 },
+    ]);
+  });
+  it("grows into travelled space instead of duplicating a stationary tail point", () => {
+    const trail = new BodyTrail([
+      { x: 0, y: 0 },
+      { x: -8, y: 0 },
+      { x: -16, y: 0 },
+    ]);
+    const growing = trail.advance({ x: 4, y: 0 }, 8, 8);
+    expect(growing).toHaveLength(3);
+    expect(trail.advance({ x: 8, y: 0 }, 8, 8)).toHaveLength(4);
+    expect(new Set(growing.map((p) => `${p.x}:${p.y}`)).size).toBe(growing.length);
+  });
   it("interpolates head rotation through the shortest arc across the angle boundary", () => {
     const angle = interpolateAngle(Math.PI - 0.1, -Math.PI + 0.1, 0.5);
     expect(Math.abs(angleDelta(angle, Math.PI))).toBeLessThan(0.000001);
