@@ -24,7 +24,7 @@ const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Z
 
 // growth goes mostly into thickness; body length (segment count) grows slowly and is capped
 const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
-const segCount = (len: number) => Math.floor(10 + Math.min(200, Math.sqrt(Math.max(0, len - 10)) * 10));
+const segCount = (len: number) => Math.floor(10 + Math.min(230, Math.sqrt(Math.max(0, len - 10)) * 11.5));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
 
@@ -50,14 +50,35 @@ export default function SnakeGame() {
   const [skin, setSkin] = useState("hue");
   const skinRef = useRef(skin); skinRef.current = skin;
   useEffect(() => { try { setCoins(+(localStorage.getItem("neon-coins") || 0)); setOwned(JSON.parse(localStorage.getItem("neon-owned") || '["hue"]')); setSkin(localStorage.getItem("neon-skin") || "hue"); } catch { /* ignore */ } }, []);
+  // progress (coins, coin-unlocked skins, selected skin) is saved locally AND to the signed-in account
+  const userRef = useRef<string | null>(null);
+  const coinsRef = useRef(coins); coinsRef.current = coins;
+  const ownedRef = useRef(owned); ownedRef.current = owned;
+  const persist = (c: number, o: string[], s: string) => {
+    try { localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", s); } catch { /* ignore */ }
+    const uid = userRef.current;
+    if (uid) supabase.from("player_progress").upsert({ user_id: uid, coins: Math.max(0, Math.floor(c)), owned: o, skin: s, updated_at: new Date().toISOString() }).then(({ error }) => { if (error) console.error(error); });
+  };
+  const persistRef = useRef(persist); persistRef.current = persist;
+  const syncProgress = async (uid: string) => {
+    const { data, error } = await supabase.from("player_progress").select("coins,owned,skin").eq("user_id", uid).maybeSingle();
+    if (error) { console.error(error); return; }
+    let lc = 0, lo: string[] = ["hue"], ls = "hue", synced = false;
+    try { lc = +(localStorage.getItem("neon-coins") || 0); lo = JSON.parse(localStorage.getItem("neon-owned") || '["hue"]'); ls = localStorage.getItem("neon-skin") || "hue"; synced = localStorage.getItem("neon-synced") === uid; } catch { /* ignore */ }
+    // first time on this device: merge local progress in; afterwards the account is the source of truth
+    const c = data ? (synced ? data.coins : Math.max(data.coins, lc)) : lc;
+    const o = [...new Set(["hue", ...(data?.owned || []), ...(synced && data ? [] : lo)])];
+    const s = data?.skin || ls;
+    try { localStorage.setItem("neon-synced", uid); } catch { /* ignore */ }
+    setCoins(c); setOwned(o); setSkin(s); persistRef.current(c, o, s);
+  };
   const pick = (id: string) => {
     const k = SKIN_BY[id];
-    if (owned.includes(id) || paid.includes(id)) { setSkin(id); localStorage.setItem("neon-skin", id); return; }
+    if (owned.includes(id) || paid.includes(id)) { setSkin(id); persist(coins, owned, id); return; }
     if (PAID_SKINS[id]) return;
     if (coins < k.price) return;
     const c = coins - k.price, o = [...owned, id];
-    setCoins(c); setOwned(o); setSkin(id);
-    localStorage.setItem("neon-coins", String(c)); localStorage.setItem("neon-owned", JSON.stringify(o)); localStorage.setItem("neon-skin", id);
+    setCoins(c); setOwned(o); setSkin(id); persist(c, o, id);
   };
   const upd = (p: Partial<Cfg>) => setCfg((o) => { const n = { ...o, ...p }; localStorage.setItem("neon-cfg", JSON.stringify(n)); return n; });
   const [preview, setPreview] = useState("hue");
@@ -75,7 +96,12 @@ export default function SnakeGame() {
   const [paid, setPaid] = useState<string[]>([]);
   const loadPaid = async (uid: string) => { const { data } = await supabase.from("skin_purchases").select("skin_id").eq("user_id", uid).eq("environment", getPaddleEnvironment()); setPaid((data || []).map((d) => d.skin_id)); };
   useEffect(() => {
-    const apply = (u: any) => { if (!u) { setUser(null); setPaid([]); return; } const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14); setUser({ id: u.id, email: u.email, name: n, avatar: u.user_metadata?.avatar_url }); loadPaid(u.id); setName((o) => o || n); };
+    const apply = (u: any) => {
+      if (!u) { userRef.current = null; setUser(null); setPaid([]); return; }
+      const n = (u.user_metadata?.full_name || u.email || "").split(" ")[0].slice(0, 14);
+      setUser({ id: u.id, email: u.email, name: n, avatar: u.user_metadata?.avatar_url }); setName((o) => o || n);
+      if (userRef.current !== u.id) { userRef.current = u.id; loadPaid(u.id); syncProgress(u.id); }
+    };
     supabase.auth.getUser().then(({ data }) => apply(data.user));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => apply(s?.user));
     return () => sub.subscription.unsubscribe();
@@ -109,7 +135,7 @@ export default function SnakeGame() {
     const mk = (nm: string, bot: boolean): Snake => {
       const p = randPos(), a = rnd(0, 6.28);
       const pts = Array.from({ length: 12 }, (_, i) => ({ x: p.x - Math.cos(a) * i * SEG, y: p.y - Math.sin(a) * i * SEG }));
-      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 120) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
+      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 45) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
     };
     // pre-rendered glowing food sprites (one per hue bucket) -> drawImage is far cheaper than arcs + string colors
     const SPR = Array.from({ length: 24 }, (_, i) => {
