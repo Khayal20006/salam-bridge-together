@@ -16,11 +16,30 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Use Node.js 24 or newer. `npm run dev` starts the frontend and the authoritative
+multiplayer server together. The existing Supabase environment variables are
+still required for login, account progress and purchases.
 
 ```sh
 git clone <this-repository-url>
 cd <repository-name>
 npm i
 npm run dev
+```
+
+The multiplayer world now has one authority for food, bot movement, safe spawning
+and collisions. See [multiplayer architecture and deployment](docs/MULTIPLAYER.md)
+for the server setup, compatibility transport and network tradeoffs.
+
+For a production dedicated server, run `npm run arena` as a separate Node service
+and build the frontend with `VITE_ARENA_URL=wss://YOUR-ARENA-HOST/arena`. A frontend
+build does not deploy or start that service automatically.
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run test:arena
+npm run benchmark:arena
+npm run build
 ```
