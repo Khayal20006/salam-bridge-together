@@ -23,6 +23,7 @@ export type WireSnapshot = {
   foods: PackedFood[];
   removed: number[];
   deaths: [string, number, number][];
+  motion?: [string, number, number, number][];
 };
 
 export function packSnapshot(
@@ -86,6 +87,9 @@ export function packSnapshot(
     foods,
     removed,
     deaths: current.deaths.map((d) => [d.id, d.len, d.tick]),
+    motion: current.snakes
+      .filter((s) => !s.bot && (!view || s.id === view.id))
+      .map((s) => [s.id, s.inputSeq ?? 0, s.target, s.turnVelocity ?? 0]),
   };
 }
 
@@ -213,6 +217,30 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
     )
       return null;
     nextDeaths.push({ id: d[0], len: d[1], tick: d[2] });
+  }
+  const motion = w["motion"];
+  if (motion !== undefined) {
+    if (!array(motion, MAX_PLAYERS)) return null;
+    const indexed = new Map(result.map((s) => [s.id, s])),
+      seenMotion = new Set<string>();
+    for (const m of motion) {
+      if (
+        !array(m, 4) ||
+        m.length !== 4 ||
+        !id(m[0]) ||
+        !integer(m[1]) ||
+        !finite(m[2]) ||
+        !finite(m[3]) ||
+        seenMotion.has(m[0])
+      )
+        return null;
+      const snake = indexed.get(m[0]);
+      if (!snake || snake.bot) return null;
+      seenMotion.add(m[0]);
+      snake.inputSeq = m[1];
+      snake.target = m[2];
+      snake.turnVelocity = m[3];
+    }
   }
   return { tick, snakes: result, foods: [...nextFoods.values()], deaths: nextDeaths };
 }

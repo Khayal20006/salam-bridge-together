@@ -11,7 +11,7 @@ export const BOOST_SPEED = 420;
 export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
-const FOOD_GROWTH_MULTIPLIER = 1;
+const FOOD_GROWTH_MULTIPLIER = 2;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
@@ -41,6 +41,7 @@ export type Point = { x: number; y: number };
 export type Food = Point & { id: number; r: number; hue: number; v: number };
 export type Snake = {
   id: string;
+  inputSeq?: number;
   spawnTick?: number;
   name: string;
   pts: Point[];
@@ -56,12 +57,31 @@ export type Snake = {
 export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
-export const snakeWidth = (_s: Pick<Snake, "len">) => 11;
+export const snakeWidth = (s: Pick<Snake, "len">) =>
+  11 + Math.min(7, Math.log2(1 + Math.max(0, s.len - 10) / 50) * 1.8);
 export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
   s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>
   Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.4));
 export const cloneSnake = (s: Snake): Snake => ({ ...s, pts: s.pts.map((p) => ({ ...p })) });
+
+/** Shared visual/authoritative kinematics; food and collision decisions stay in Arena. */
+export function advanceHead(s: Snake, seconds: number): Point {
+  s.boost = s.boost && s.len > 12;
+  const speed = s.boost ? BOOST_SPEED : BASE_SPEED;
+  const maxRate = Math.min(
+    TURN_RATE * (s.boost ? BOOST_TURN_MULTIPLIER : 1),
+    speed / (snakeWidth(s) * 1.6),
+  );
+  const steering = smoothTurn(s.angle, s.target, s.turnVelocity ?? 0, maxRate, seconds);
+  s.angle = steering.angle;
+  s.turnVelocity = steering.velocity;
+  const head = s.pts[0]!;
+  return {
+    x: head.x + Math.cos(s.angle) * speed * seconds,
+    y: head.y + Math.sin(s.angle) * speed * seconds,
+  };
+}
 
 export function pointSegmentDistanceSquared(p: Point, a: Point, b: Point): number {
   const dx = b.x - a.x,
@@ -215,6 +235,7 @@ export class Arena {
     )
       return;
     this.inputs.set(id, value.seq);
+    s.inputSeq = value.seq;
     s.target = Math.atan2(Math.sin(value.angle), Math.cos(value.angle));
     s.boost = value.boost;
   }
@@ -232,10 +253,10 @@ export class Arena {
     const navigation = this.tick % 6 === 0 ? new SpatialGrid<Obstacle>(120) : undefined;
     if (navigation) {
       for (const s of this.snakes.values()) {
+        const radius = snakeWidth(s);
         for (let i = 1; i < s.pts.length; i += 2) {
           const a = s.pts[i - 1]!,
             b = s.pts[Math.min(i + 1, s.pts.length - 1)]!;
-          const radius = snakeWidth(s);
           navigation.insert(
             Math.min(a.x, b.x) - radius,
             Math.min(a.y, b.y) - radius,
@@ -254,18 +275,9 @@ export class Arena {
         const memory = botGoal(s, nearbyFood, this.foods, this.botMemory.get(s.id), this.tick);
         this.botMemory.set(s.id, memory);
         const obstacles = navigation.query(head.x - 200, head.y - 200, head.x + 200, head.y + 200);
-        s.target = botHeading(s, memory.goal, obstacles, WORLD);
+        s.target = botHeading(s, memory.goal, obstacles, WORLD, snakeWidth(s));
       }
-      s.boost = s.boost && s.len > 12;
-      const speedPerSecond = s.boost ? BOOST_SPEED : BASE_SPEED;
-      const maxRate = Math.min(
-        TURN_RATE * (s.boost ? BOOST_TURN_MULTIPLIER : 1),
-        speedPerSecond / (snakeWidth(s) * 1.6),
-      );
-      const steering = smoothTurn(s.angle, s.target, s.turnVelocity ?? 0, maxRate, STEP_MS / 1000);
-      s.angle = steering.angle;
-      s.turnVelocity = steering.velocity;
-      const speed = (speedPerSecond * STEP_MS) / 1000;
+      const nextHead = advanceHead(s, STEP_MS / 1000);
       if (s.boost) {
         s.len = Math.max(10, s.len - 0.16);
         if (this.tick % 5 === 0) this.food({ ...s.pts.at(-1)! }, 0.5);
@@ -275,11 +287,7 @@ export class Arena {
         trail = new BodyTrail(s.pts);
         this.trails.set(s.id, trail);
       }
-      s.pts = trail.advance(
-        { x: head.x + Math.cos(s.angle) * speed, y: head.y + Math.sin(s.angle) * speed },
-        segmentCount(s.len),
-        SEG,
-      );
+      s.pts = trail.advance(nextHead, segmentCount(s.len), SEG);
     }
     // All deaths are decided from the same tick, then applied together.
     const dead = new Set<string>();
@@ -287,10 +295,10 @@ export class Arena {
     const bodies = new SpatialGrid<Body>(100);
     for (const s of this.snakes.values()) {
       if (isSpawnProtected(s, this.tick)) continue;
+      const radius = snakeWidth(s);
       for (let i = 2; i < s.pts.length; i++) {
         const a = s.pts[i - 1]!,
-          b = s.pts[i]!,
-          radius = snakeWidth(s);
+          b = s.pts[i]!;
         bodies.insert(
           Math.min(a.x, b.x) - radius,
           Math.min(a.y, b.y) - radius,
@@ -450,6 +458,7 @@ export class Arena {
     this.foodSnapshots = new WeakMap();
     for (const s of snapshot.snakes) {
       this.snakes.set(s.id, cloneSnake(s));
+      if (s.inputSeq !== undefined) this.inputs.set(s.id, s.inputSeq);
       this.trails.set(s.id, new BodyTrail(s.pts));
     }
     this.foodId = 0;

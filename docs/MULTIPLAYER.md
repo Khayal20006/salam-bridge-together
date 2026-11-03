@@ -16,14 +16,17 @@ order cannot decide the winner. A spatial grid limits body and food queries.
 
 New snakes must have clearance along their entire body. If a safe location cannot
 be found, spawning is rejected rather than placing a snake inside another one.
-Body detail is capped at 240 points. Eating increases length gradually while the
-body radius stays at 11 world units; food does not increase thickness.
+Body detail is capped at 240 points. Normal food now adds 0.6 length, following
+the updated request for more visible growth. Body radius increases gently from
+11 to at most 18 world units as length grows; collision and bot navigation use
+that same radius.
 Every newborn has 45 simulation steps (1500 ms) of protection against other
 snakes. Its body cannot kill another player during protection. The world boundary
 still kills, and repeated join messages cannot extend protection. All peers derive
 the shield from the replicated spawn tick; a pale ring marks it on the head.
 After protection expires, head and body contact use the full visible 11-unit head
-radius, preventing visible grazing hits from passing through a smaller hitbox.
+radius (including gradual growth), preventing visible grazing hits from passing
+through a smaller hitbox.
 
 ## Transports
 
@@ -102,7 +105,7 @@ the custom domain has been republished. On 2026-11-03 the HTML served by
 `https://neonworm.app/` still identified source commit
 `b9ad74b40c010489b08af0dfa191d7a7fe4d7742`, while GitHub main contained newer code.
 Publish the updated project in Lovable and verify the served commit marker after
-publication. The graphics panel shows game version `2026.11.03.3`; the HUD shows
+publication. The graphics panel shows game version `2026.11.03.4`; the HUD shows
 the exact room ID to help two players verify their room and version. Reload old
 tabs after publishing a protocol update. Source push and live publication are
 separate verification steps.
@@ -180,3 +183,25 @@ sampled allocation fell from 1962.14 MB to 1088.05 MB, publication p95 from 33.4
 to 19.89 ms, and maximum observed GC from 8.94 ms to 2.54 ms. Encoded traffic was
 identical at 71,847,389 bytes. These are individual local measurements with profiler
 overhead, not proof of the cause of every browser freeze or a production FPS guarantee.
+
+## Local steering response
+
+The original version moved the local player immediately on every animation frame.
+Pure snapshot interpolation later added network delay and the 100 ms render buffer
+to the local player's controls. In a two-peer relay measurement, an input took about
+253 ms to appear in the authority, while a separate 10-second single-player browser
+sample remained at 60 FPS. This identifies a control-latency problem in that sample,
+not proof that every reported freeze has the same cause.
+
+Only the local player's visual motion is now predicted with the shared movement
+function. The optional protocol-v2 `motion` field carries input acknowledgements,
+target direction and angular velocity. Other players and bots still interpolate
+the authoritative world. Predicted motion never claims food, changes score or kills
+anyone. Returning authority frames reconcile over 60 ms; prediction stops after
+250 ms without authority and clears on death, reconnect identity or a new life.
+Older authorities without the optional acknowledgement keep the existing renderer.
+
+This improves local response without extra input traffic. It cannot remove relay
+RTT, host-tab suspension, or provide a persistent trusted server. With only Lovable
+hosting, the compatibility host is still a browser. Deploy `server/arena.mjs` and
+set `VITE_ARENA_URL` for an independently hosted authoritative service.

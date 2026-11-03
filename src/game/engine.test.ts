@@ -220,7 +220,7 @@ describe("authoritative arena", () => {
     arena.snakes.set("b", snake("b", 25, 0, Math.PI));
     arena.foods.set(9001, { id: 9001, x: 0, y: 0, v: 10, hue: 0, r: 4 });
     arena.step();
-    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 30]);
+    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 40]);
     expect(arena.foods.has(9001)).toBe(false);
   });
   it("ignores malformed and out-of-order input instead of accepting positions", () => {
@@ -236,12 +236,36 @@ describe("authoritative arena", () => {
   it("caps body detail as length increases", () => {
     expect(segmentCount(10)).toBe(10);
     expect(segmentCount(1_000_000)).toBe(240);
-    expect(snakeWidth({ len: 1_000_000 })).toBe(snakeWidth({ len: 10 }));
+    expect(snakeWidth({ len: 1_000_000 })).toBe(18);
   });
-  it("grows gradually in length without thickening after food", () => {
+  it("grows in length with only gradual, bounded thickening", () => {
     expect(segmentCount(10.3) - segmentCount(10)).toBeLessThanOrEqual(1);
     expect(segmentCount(13) - segmentCount(10)).toBeLessThanOrEqual(5);
-    expect(snakeWidth({ len: 13 })).toBe(snakeWidth({ len: 10 }));
+    expect(snakeWidth({ len: 13 })).toBeGreaterThan(snakeWidth({ len: 10 }));
+    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.2);
+  });
+  it("makes repeated normal meals visibly extend the body and gently increase thickness", () => {
+    const arena = new Arena(random(), false),
+      player = snake("player", 0, 0);
+    player.len = 10;
+    arena.snakes.set(player.id, player);
+    const originalPoints = player.pts.length;
+    for (let i = 0; i < 15; i++) {
+      const head = player.pts[0]!;
+      arena.foods.set(100000 + i, {
+        id: 100000 + i,
+        x: head.x + 14,
+        y: head.y,
+        r: 4,
+        hue: 0,
+        v: 0.3,
+      });
+      arena.step();
+    }
+    expect(player.len).toBeGreaterThanOrEqual(18.9);
+    expect(player.pts.length).toBeGreaterThan(originalPoints + 8);
+    expect(snakeWidth(player)).toBeGreaterThan(11);
+    expect(snakeWidth(player)).toBeLessThan(12);
   });
   it("transfers the exact simulation when authority changes", () => {
     const original = new Arena(random());

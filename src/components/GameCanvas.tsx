@@ -13,6 +13,7 @@ import {
 } from "@/game/engine";
 import { interpolateAngle, traceBodyCurve } from "@/game/movement";
 import { snapshotIndex } from "@/game/snapshot-index";
+import { LocalPrediction } from "@/game/prediction";
 
 type Props = {
   room: string;
@@ -63,6 +64,7 @@ export default function GameCanvas(props: Props) {
     }[] = [];
     const rendered = new Map<string, Snake>();
     const all: Snake[] = [];
+    const prediction = new LocalPrediction();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = { x: 0, y: 0, z: 0.8 };
     const steeringAngle = () => {
@@ -99,6 +101,7 @@ export default function GameCanvas(props: Props) {
           wasAlive = false;
           history.length = 0;
           rendered.clear();
+          prediction.clear();
         }
         latest = state;
         if (history.at(-1)?.state.tick === state.tick) history.pop();
@@ -110,6 +113,8 @@ export default function GameCanvas(props: Props) {
         });
         if (history.length > 8) history.shift();
         const me = state.snakes.find((s) => s.id === self);
+        if (me) prediction.reconcile(me, performance.now());
+        else prediction.clear();
         if (me) {
           if (requested && !wasAlive) {
             active = true;
@@ -150,7 +155,10 @@ export default function GameCanvas(props: Props) {
     const sendInput = (force = false) => {
       const now = performance.now();
       if (!active || (!force && now - lastInput < 1000 / 30)) return;
-      connection.input(steeringAngle(), mouse.down);
+      const angle = steeringAngle();
+      prediction.steer(angle, mouse.down);
+      const seq = connection.input(angle, mouse.down);
+      if (seq !== undefined) prediction.command(seq, now);
       lastInput = now;
     };
     const move = (e: PointerEvent) => {
@@ -158,6 +166,7 @@ export default function GameCanvas(props: Props) {
       mouse.x = e.clientX;
       mouse.y = e.clientY;
       sendInput();
+      if (active) prediction.steer(steeringAngle(), mouse.down);
     };
     const down = (e: PointerEvent) => {
       if (e.target !== c || e.button !== 0) return;
@@ -261,6 +270,7 @@ export default function GameCanvas(props: Props) {
       for (const key of rendered.keys()) if (!currentIds?.has(key)) rendered.delete(key);
       const me = all.find((s) => s.id === self);
       if (me) {
+        if (active) prediction.renderInto(me, now);
         const head = me.pts[0]!,
           k = 1 - Math.pow(0.85, dt);
         cam.x += (head.x - cam.x) * k;

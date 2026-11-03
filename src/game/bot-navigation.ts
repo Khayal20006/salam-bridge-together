@@ -79,6 +79,7 @@ export function botHeading(
   goal: Point,
   obstacles: Iterable<Obstacle>,
   world: number,
+  radius = 11,
 ): number {
   const head = snake.pts[0]!;
   const desired =
@@ -100,15 +101,15 @@ export function botHeading(
       velocity = snake.turnVelocity ?? 0;
     const projected = { ...head };
     for (let step = 0; step < 6; step++) {
-      const turn = smoothTurn(angle, target, velocity, 8.4, 0.12);
+      const turn = smoothTurn(angle, target, velocity, Math.min(8.4, 156 / (radius * 1.6)), 0.12);
       angle = turn.angle;
       velocity = turn.velocity;
       projected.x += Math.cos(angle) * 156 * 0.12;
       projected.y += Math.sin(angle) * 156 * 0.12;
-      const wall = world - Math.hypot(projected.x, projected.y) - 11;
+      const wall = world - Math.hypot(projected.x, projected.y) - radius;
       if (wall < 80) score += (80 - wall) ** 2;
       for (const body of nearby) {
-        const clearance = distance(projected, body.a, body.b) - body.radius - 11;
+        const clearance = distance(projected, body.a, body.b) - body.radius - radius;
         if (clearance < 34) score += (34 - clearance) ** 2 * (clearance < 0 ? 15 : 0.6);
       }
     }

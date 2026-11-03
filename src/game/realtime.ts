@@ -274,7 +274,7 @@ export class RealtimeConnection implements ArenaConnection {
     };
     this.sendJoin();
   }
-  input(angle: number, boost: boolean): void {
+  input(angle: number, boost: boolean): number | undefined {
     if (!Number.isFinite(angle) || !this.connected || !this.host) return;
     const at = performance.now(),
       previous = this.lastInput;
@@ -290,6 +290,7 @@ export class RealtimeConnection implements ArenaConnection {
     const message = { type: "input", id: this.id, seq: ++this.seq, angle, boost };
     if (this.host === this.id) this.command(message);
     else void this.broadcast("command", message);
+    return message.seq;
   }
   close(): void {
     this.closed = true;

@@ -11,7 +11,7 @@ export type ConnectionEvents = {
 };
 export interface ArenaConnection {
   play(name: string, skin: string): void;
-  input(angle: number, boost: boolean): void;
+  input(angle: number, boost: boolean): number | undefined;
   close(): void;
 }
 
@@ -125,14 +125,17 @@ class SocketConnection implements ArenaConnection {
       })
       .catch(() => this.events.rejected("Hesab məlumatı yüklənmədi. Yenidən daxil ol."));
   }
-  input(angle: number, boost: boolean): void {
+  input(angle: number, boost: boolean): number | undefined {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const seq = ++this.seq;
     this.send({
       type: "input",
-      seq: ++this.seq,
+      seq,
       angle,
       boost,
       radius: Math.min(2200, Math.max(800, Math.hypot(innerWidth, innerHeight) + 100)),
     });
+    return seq;
   }
   close(): void {
     this.closed = true;
