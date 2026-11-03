@@ -14,14 +14,28 @@ try {
 
 const port = Number(process.env.ARENA_PORT || process.env.PORT || 8787);
 const host = process.env.ARENA_HOST || "127.0.0.1";
-const origins = new Set(
-  (
-    process.env.ARENA_ALLOWED_ORIGINS ||
-    "http://localhost:8080,http://localhost:5173,http://localhost:3000,http://127.0.0.1:8080,http://127.0.0.1:5173"
-  )
+// Browser origins allowed to open arena sockets: local dev hosts plus the
+// project's own hosted domains (Lovable preview/published and the custom domain).
+const extraOrigins = new Set(
+  (process.env.ARENA_ALLOWED_ORIGINS || "")
     .split(",")
-    .map((s) => s.trim()),
+    .map((s) => s.trim())
+    .filter(Boolean),
 );
+const allowedHosts = ["localhost", "127.0.0.1", "lovable.app", "neonworm.app"];
+
+function allowedOrigin(origin) {
+  if (!origin) return true;
+  if (extraOrigins.has(origin)) return true;
+  let host;
+  try {
+    host = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return allowedHosts.some((base) => host === base || host.endsWith(`.${base}`));
+}
+
 const rooms = new Map();
 const paid = new Set(["rgb", "plasma", "legend"]);
 
