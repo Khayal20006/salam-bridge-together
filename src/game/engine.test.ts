@@ -10,6 +10,7 @@ import {
   isSpawnProtected,
   SPAWN_PROTECTION_TICKS,
   advanceHead,
+  BASE_SPEED,
   type Snake,
 } from "./engine";
 import { packSnapshot, unpackSnapshot } from "./protocol";
@@ -39,6 +40,27 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it.each([20, 100, 500])(
+    "forgives a shallow graze at length %i but still kills a deep crossing",
+    (len) => {
+      for (const penetration of [1.05, 0.77, 0.55]) {
+        const arena = new Arena(random(), false),
+          player = snake("player", 0, 0),
+          wall = snake("wall", 0, -1000, -Math.PI / 2);
+        player.len = len;
+        wall.len = len;
+        const count = segmentCount(len),
+          top = -(count - 1) * 4;
+        wall.pts = Array.from({ length: count }, (_, i) => ({ x: 0, y: top + i * 8 }));
+        const gap = (snakeWidth(player) + snakeWidth(wall)) * penetration;
+        for (const p of player.pts) p.x -= gap + (BASE_SPEED * STEP_MS) / 1000;
+        arena.snakes.set(player.id, player);
+        arena.snakes.set(wall.id, wall);
+        arena.step();
+        expect(arena.deaths.some((d) => d.id === player.id)).toBe(penetration === 0.55);
+      }
+    },
+  );
   it("keeps normal travel steady and limits boost to about twice normal speed", () => {
     const normal = snake("normal", 0, 0),
       boosted = snake("boosted", 0, 0);
@@ -110,10 +132,12 @@ describe("authoritative arena", () => {
   });
   it("forgives a light edge graze while killing a deeper body collision", () => {
     const arena = new Arena(random(), false);
-    const player = snake("player", -27, 0),
+    const player = snake("player", 0, 0),
       wall = snake("wall", 0, -180, -Math.PI / 2);
     wall.len = 40;
     wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
+    const start = (snakeWidth(player) + snakeWidth(wall)) * 0.9 + (BASE_SPEED * STEP_MS) / 1000;
+    for (const p of player.pts) p.x -= start;
     arena.snakes.set(player.id, player);
     arena.snakes.set(wall.id, wall);
     arena.step();
@@ -287,14 +311,16 @@ describe("authoritative arena", () => {
     expect(segmentCount(10.3) - segmentCount(10)).toBeLessThanOrEqual(1);
     expect(segmentCount(13) - segmentCount(10)).toBeLessThanOrEqual(5);
     expect(snakeWidth({ len: 13 })).toBeGreaterThan(snakeWidth({ len: 10 }));
-    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.4);
+    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeGreaterThan(0.5);
+    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.7);
+    expect(snakeWidth({ len: 10.75 }) - snakeWidth({ len: 10 })).toBeLessThan(0.2);
   });
   it("keeps thickening past the old radius limit without making large meals cause a width jump", () => {
     const widths = [10, 50, 100, 170, 200, 500, 1_000, 10_000].map((len) => snakeWidth({ len }));
     for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThan(widths[i - 1]!);
     expect(snakeWidth({ len: 200 })).toBeGreaterThan(18);
     expect(snakeWidth({ len: 200.75 }) - snakeWidth({ len: 200 })).toBeLessThan(0.02);
-    expect(snakeWidth({ len: 10_000 })).toBeLessThan(40);
+    expect(snakeWidth({ len: 10_000 })).toBeLessThan(45);
   });
   it("makes repeated normal meals visibly extend the body and gently increase thickness", () => {
     const arena = new Arena(random(), false),
@@ -316,8 +342,15 @@ describe("authoritative arena", () => {
     }
     expect(player.len).toBeGreaterThanOrEqual(21.2);
     expect(player.pts.length).toBeGreaterThan(originalPoints + 8);
-    expect(snakeWidth(player)).toBeGreaterThan(11);
-    expect(snakeWidth(player)).toBeLessThan(12.5);
+    expect(snakeWidth(player)).toBeGreaterThan(12.8);
+    expect(snakeWidth(player)).toBeLessThan(13.3);
+    const packet = packSnapshot(arena.snapshot());
+    for (const client of [
+      unpackSnapshot(packet)!,
+      unpackSnapshot(JSON.parse(JSON.stringify(packet)))!,
+    ]) {
+      expect(snakeWidth(client.snakes.find((s) => s.id === player.id)!)).toBe(snakeWidth(player));
+    }
   });
   it("transfers the exact simulation when authority changes", () => {
     const original = new Arena(random());

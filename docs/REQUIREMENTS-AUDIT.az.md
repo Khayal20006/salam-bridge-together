@@ -81,3 +81,9 @@ boost və buraxanda dayanması real brauzerdə yoxlanır, kontekst menyusu açı
 Simulyasiyanın müvəqqəti axtarış yaddaşı təkrar istifadə olunur. Eyni sürət və
 yükdə yeni ayrılan yaddaş təxminən 41% azaldı, CPU p95 yaxşılaşması təsdiqlənmədi.
 Ortaq vəziyyət və paketlər müqayisədə eyni qaldı. 90 avtomatik test keçir.
+
+2026.11.03.10: uzandıqca qalınlaşma daha aydın görünür. Başlanğıc radius 11,
+15 normal yemdən sonra təxminən 13, 1000 xalda 19,09-dur. Bir yemin artımı
+yenə tədricidir; eyni qalınlıq server və bütün müştərilərdə istifadə olunur.
+Yüngül təmasın bağışlanması artırıldı: toqquşma nüvəsi görünən radiusun 72%-idir.
+Açıq ara məsafə, yüngül toxunuş və ciddi keçid kiçik/böyük ilanlarda test edilir.

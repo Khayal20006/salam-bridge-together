@@ -374,3 +374,21 @@ not resident RAM and these local samples are not Internet latency guarantees.
 
 90 unit tests, TypeScript, ESLint, production build, real WebSocket integration,
 right-button browser controls, and the two-browser Supabase lifecycle suite passed.
+
+Version 2026.11.03.10 makes ongoing thickening more visible: the same logarithmic
+curve now uses a progress scale of 24 and coefficient 3.6, instead of 40 and 3.
+Initial radius stays 11; 15 normal meals bring it to about 13, score 500 to 16.09,
+and score 1000 to 19.09. A single normal meal increases radius by less than 0.2
+at spawn, and thickness keeps increasing at larger lengths. The shared width
+function drives drawing, collision radii, safe spawn clearance and prediction;
+growth is not a client-only cosmetic effect. Body point counts and normal food
+values are unchanged. The edge-graze regression uses current visible radii rather
+than a distance that only matched the old, thinner body.
+Collision core scale is now 0.72 rather than 0.8, increasing edge forgiveness as
+visible thickness grows. Parameterized cases check clear separation, shallow
+grazes and deep crossings for short and large snakes; swept collision checks
+still run every tick. This does not rewind remote bodies or eliminate the
+100–200 ms interpolation buffer, so visual contact under network delay remains
+a separate limitation rather than a proven zero-latency guarantee.
+93 unit tests, TypeScript, ESLint, production build, native browser controls,
+real WebSocket clients and the two-browser Supabase lifecycle suite passed.

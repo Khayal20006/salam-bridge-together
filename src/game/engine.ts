@@ -13,7 +13,7 @@ export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 2.5;
-const COLLISION_SCALE = 0.8;
+const COLLISION_SCALE = 0.72;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
@@ -60,7 +60,7 @@ export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
 export const snakeWidth = (s: Pick<Snake, "len">) =>
-  11 + Math.log2(1 + Math.max(0, s.len - 10) / 40) * 3;
+  11 + Math.log2(1 + Math.max(0, s.len - 10) / 24) * 3.6;
 export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
   s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>
