@@ -6,9 +6,50 @@ import {
   smoothSpine,
   smoothTurn,
   traceBodyCurve,
+  traceBodyRange,
 } from "./movement";
 
 describe("fluid snake movement", () => {
+  it.each([1, 2, 4])("preserves the neck curve at render detail %i", (detail) => {
+    const body = [
+      { x: 0, y: 0 },
+      { x: -8, y: 0 },
+      { x: -16, y: 0 },
+      { x: -24, y: 0 },
+    ];
+    const points: { x: number; y: number }[] = [];
+    smoothSpine(body, points, detail, 0.6);
+    const facing = Math.atan2(points[0]!.y - points[1]!.y, points[0]!.x - points[1]!.x);
+    expect(Math.abs(angleDelta(facing, 0.6))).toBeLessThan(0.15);
+    expect(points.at(-1)).toEqual(body.at(-1));
+  });
+  it("joins fractional skin bands exactly and advances their boundary continuously", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 8, y: 0 },
+      { x: 16, y: 8 },
+      { x: 16, y: 16 },
+    ];
+    const moves: number[][] = [],
+      curves: number[][] = [];
+    const pen = {
+      moveTo: (...p: number[]) => {
+        moves.push(p);
+      },
+      lineTo: () => {},
+      quadraticCurveTo: (...p: number[]) => {
+        curves.push(p);
+      },
+    };
+    traceBodyRange(pen, points, 0, 1.3);
+    const boundary = curves.at(-1)!.slice(2);
+    traceBodyRange(pen, points, 1.3, points.length);
+    expect(moves.at(-1)).toEqual(boundary);
+    traceBodyRange(pen, points, 0, 1.31);
+    const next = curves.at(-1)!.slice(2);
+    expect(Math.hypot(next[0]! - boundary[0]!, next[1]! - boundary[1]!)).toBeGreaterThan(0);
+    expect(Math.hypot(next[0]! - boundary[0]!, next[1]! - boundary[1]!)).toBeLessThan(0.2);
+  });
   it("joins the face and neck on a shared tangent when the head changes direction", () => {
     const body = [
       { x: 0, y: 0 },

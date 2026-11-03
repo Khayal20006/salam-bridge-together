@@ -61,3 +61,9 @@ gözlər görünən boyunla yönəlir. 70 test, TypeScript, ESLint, build, real 
 və brauzer smoke sınağı keçdi. Yuxarıdakı sabit qalınlıq həddi və köhnə versiya
 qeydləri tarixi nəticələrdir. Son canlı yoxlamada neonworm.app hələ .3 idi;
 GitHub yenilənməsi Lovable-da Publish → Update əməliyyatını əvəz etmir.
+
+2026.11.03.7: digər ilanların görünüşü paket gəliş vaxtı əvəzinə ortaq simulyasiya
+tick-i ilə irəliləyir; dəyişkən bağlantı üçün 100–200 ms bufer var. Skin rəngləri
+fasiləsiz axır, daxili yumru kənarların üst-üstə düşməsi götürülüb. Sıx və uzun
+bədənlərdə çəkiliş yükü azalır; baş-boyun əyrisi qorunur. Qalınlaşma düsturu
+dəyişməyib. Lokal brauzer və ayrıca ağır çəkiliş ölçmələri MULTIPLAYER.md-dədir.

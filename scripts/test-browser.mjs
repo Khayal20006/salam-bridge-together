@@ -121,6 +121,49 @@ try {
     sessionId,
   );
   assert.deepEqual(size, { width: 1366, height: 900 });
+  if (process.env.SURFACE_DIAGNOSTICS === "1") {
+    const report = await evaluate(
+      `(async () => {
+      const frames=[], longTasks=[];
+      const observer=new PerformanceObserver(list=>longTasks.push(...list.getEntries().map(e=>e.duration)));
+      observer.observe({entryTypes:['longtask']});
+      let previous=performance.now();
+      await new Promise(resolve=>{const frame=now=>{frames.push(now-previous);previous=now;if(frames.length<300)requestAnimationFrame(frame);else resolve();};requestAnimationFrame(frame);});
+      observer.disconnect();
+      frames.sort((a,b)=>a-b);
+      const {drawSnakeSurface}=await import('/src/game/snake-surface.ts');
+      const {smoothSpine}=await import('/src/game/movement.ts');
+      const {SKIN_BY}=await import('/src/lib/skins.ts');
+      const gallery=document.createElement('canvas');gallery.width=1200;gallery.height=900;
+      const ctx=gallery.getContext('2d');ctx.fillStyle='#0b0f1a';ctx.fillRect(0,0,1200,900);
+      const ids=['hue','jungle','rainbow','fire','aurora','obsidian','cosmos','sakura','royal'];
+      for(let row=0;row<ids.length;row++){
+        const body=Array.from({length:96},(_,i)=>({x:1050-i*8,y:row*95+55+Math.sin(i/15)*20}));
+        const points=[];smoothSpine(body,points,4,Math.atan2(body[0].y-body[1].y,body[0].x-body[1].x));
+        drawSnakeSurface(ctx,points,16,SKIN_BY[ids[row]],145,1234,false,4,false);
+        ctx.fillStyle='#e0eaff';ctx.font='16px sans-serif';ctx.fillText(SKIN_BY[ids[row]].name,20,row*95+55);
+      }
+      window.surfaceGallery=gallery.toDataURL('image/png');
+      const spine=[];smoothSpine(Array.from({length:240},(_,i)=>({x:1100-i*4,y:450+Math.sin(i/20)*100})),spine,1,0);
+      const costs=[];
+      for(let sample=0;sample<30;sample++){
+        const start=performance.now();
+        for(let n=0;n<18;n++)drawSnakeSurface(ctx,spine,16,SKIN_BY[ids[n%ids.length]],145,1234+sample*16,true,1,false);
+        ctx.getImageData(0,0,1,1); // Flush Canvas commands so the sample includes drawing work.
+        costs.push(performance.now()-start);
+      }
+      costs.sort((a,b)=>a-b);
+      return {frames:frames.length,p95Ms:+frames[Math.floor(frames.length*.95)].toFixed(2),maxMs:+frames.at(-1).toFixed(2),longTasks:longTasks.length,
+        surfaceStress:{snakes:18,physicalPoints:240,drawPoints:spine.length,p95Ms:+costs[Math.floor(costs.length*.95)].toFixed(2)}};
+    })()`,
+      sessionId,
+    );
+    const gallery = await evaluate("window.surfaceGallery", sessionId);
+    const galleryPath = join(tmpdir(), "neon-skin-surfaces.png");
+    await writeFile(galleryPath, Buffer.from(gallery.split(",")[1], "base64"));
+    console.log("Render diagnostics:", JSON.stringify(report));
+    console.log("Skin preview:", galleryPath);
+  }
   assert.deepEqual(errors, []);
   console.log(
     "PASS: real browser loads the menu, connects to the authoritative server, starts gameplay, renders a correctly sized canvas, and reports no JavaScript exceptions.",

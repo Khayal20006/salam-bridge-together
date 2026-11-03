@@ -29,8 +29,9 @@ export function smoothSpine(
       b = points[i]!,
       c = points[i + 1]!,
       d = points[Math.min(points.length - 1, i + 2)]!;
-    for (let step = 0; step < divisions; step++) {
-      const t = step / divisions,
+    const samples = i === 0 && headAngle !== undefined ? Math.max(8, divisions) : divisions;
+    for (let step = 0; step < samples; step++) {
+      const t = step / samples,
         t2 = t * t,
         t3 = t2 * t;
       const aa = (-t3 + 2 * t2 - t) * 0.5,
@@ -124,13 +125,42 @@ export function traceBodyCurve(
   start = 0,
   end = points.length - 1,
 ): void {
-  if (!points.length || start > end) return;
-  const first = points[start]!,
-    before = points[Math.max(0, start - 1)]!;
-  pen.moveTo((before.x + first.x) / 2, (before.y + first.y) / 2);
-  for (let i = start; i <= end; i++) {
+  traceBodyRange(pen, points, start, end + 1);
+}
+
+/** Fractional curve ranges keep flowing colors continuous between frames and at seams. */
+export function traceBodyRange(pen: CurvePen, points: Point[], start: number, end: number): void {
+  start = Math.max(0, start);
+  end = Math.min(points.length, end);
+  if (start >= end) return;
+  const first = Math.floor(start),
+    last = Math.ceil(end);
+  for (let i = first; i < last; i++) {
     const p = points[i]!,
+      before = points[Math.max(0, i - 1)]!,
       next = points[Math.min(points.length - 1, i + 1)]!;
-    pen.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2);
+    const ax = (before.x + p.x) / 2,
+      ay = (before.y + p.y) / 2;
+    const cx = (p.x + next.x) / 2,
+      cy = (p.y + next.y) / 2;
+    const t0 = Math.max(0, start - i),
+      t1 = Math.min(1, end - i);
+    if (t0 === 0 && t1 === 1) {
+      if (i === first) pen.moveTo(ax, ay);
+      pen.quadraticCurveTo(p.x, p.y, cx, cy);
+      continue;
+    }
+    const u0 = 1 - t0,
+      u1 = 1 - t1;
+    const x0 = u0 * u0 * ax + 2 * u0 * t0 * p.x + t0 * t0 * cx;
+    const y0 = u0 * u0 * ay + 2 * u0 * t0 * p.y + t0 * t0 * cy;
+    if (i === first) pen.moveTo(x0, y0);
+    const span = t1 - t0;
+    pen.quadraticCurveTo(
+      x0 + span * (u0 * (p.x - ax) + t0 * (cx - p.x)),
+      y0 + span * (u0 * (p.y - ay) + t0 * (cy - p.y)),
+      u1 * u1 * ax + 2 * u1 * t1 * p.x + t1 * t1 * cx,
+      u1 * u1 * ay + 2 * u1 * t1 * p.y + t1 * t1 * cy,
+    );
   }
 }

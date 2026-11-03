@@ -252,3 +252,26 @@ visible head radius. Neither change changes bot authority or packet size.
 test and a native browser smoke test passed. The 600-tick local benchmark with
 49.1 average humans and 18 bots measured p95 3.58 ms and maximum 6.39 ms against
 the 33.33 ms simulation budget; this is not a production network load test.
+
+Version 2026.11.03.7 plays remote bodies against simulation ticks, with a 100–200 ms
+adaptive jitter buffer and playback-rate corrections limited to 10%. Packet
+arrival jitter no longer directly changes interpolation speed. This does not
+change local prediction, authority, food ownership, collision decisions or bot
+simulation. Playback stops at the newest authority during an actual outage.
+
+Skins share a continuous base surface and use fractional quadratic-curve ranges
+for smooth color flow instead of a 90 ms stepping pattern. Interior bands meet
+without overlapping round caps. Shared highlight strokes provide volume without
+per-segment gradients. Long bodies and crowded views reduce drawing subdivision
+and highlights; the first neck interval retains its curve at every detail level.
+
+The optional `SURFACE_DIAGNOSTICS=1 node scripts/test-browser.mjs` diagnostic saves
+a nine-skin preview outside Git and records 300 browser frames. A local headless
+Edge sample (GPU disabled) measured p95/max 16.7/16.8 ms and zero long tasks.
+A separate synthetic drawing-only scene with 18 overlapping maximum-detail
+240-point bodies measured p95 88.8 ms before adaptive detail; later samples with
+adaptive detail measured 30.9 ms and 22.4 ms (the final neck-preserving body has
+247 visual points). These are separate local samples, with normal run-to-run
+variation. This deliberately expensive software
+rendering sample is not a guarantee of 60 FPS for that scene or production play.
+77 unit tests, typecheck, lint, the production build and the real browser check passed.

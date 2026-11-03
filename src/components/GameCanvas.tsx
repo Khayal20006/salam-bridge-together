@@ -4,16 +4,18 @@ import type { GameConfig } from "@/lib/game-state";
 import { connectArena } from "@/game/connection";
 import {
   WORLD,
-  SEG,
+  STEP_MS,
   snakeWidth,
   isSpawnProtected,
   cloneSnake,
   type Snake,
   type Snapshot,
 } from "@/game/engine";
-import { interpolateAngle, smoothSpine, traceBodyCurve } from "@/game/movement";
+import { interpolateAngle, smoothSpine } from "@/game/movement";
 import { snapshotIndex } from "@/game/snapshot-index";
 import { LocalPrediction } from "@/game/prediction";
+import { SnapshotPlayback } from "@/game/playback";
+import { drawSnakeSurface } from "@/game/snake-surface";
 
 type Props = {
   room: string;
@@ -60,7 +62,6 @@ export default function GameCanvas(props: Props) {
     let lastFrame = performance.now();
     const history: {
       state: Snapshot;
-      at: number;
       foods: Map<number, Snapshot["foods"][number]>;
       snakes: Map<string, Snake>;
     }[] = [];
@@ -68,6 +69,7 @@ export default function GameCanvas(props: Props) {
     const spines = new Map<string, Snake["pts"]>();
     const all: Snake[] = [];
     const prediction = new LocalPrediction();
+    const playback = new SnapshotPlayback();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = { x: 0, y: 0, z: 0.8 };
     const steeringAngle = () => {
@@ -107,22 +109,24 @@ export default function GameCanvas(props: Props) {
           rendered.clear();
           spines.clear();
           prediction.clear();
+          playback.clear();
           resetCamera = true;
         }
         latest = state;
         if (rebaseHistory) {
           history.length = 0;
+          playback.clear();
           rebaseHistory = false;
           resetCamera = true;
         }
         if (history.at(-1)?.state.tick === state.tick) history.pop();
         history.push({
           state,
-          at: performance.now(),
           foods: snapshotIndex(state).foods,
           snakes: snapshotIndex(state).snakes,
         });
         if (history.length > 8) history.shift();
+        playback.receive(state.tick, performance.now(), STEP_MS);
         const me = state.snakes.find((s) => s.id === self);
         if (me && resetCamera) {
           cam.x = me.pts[0]!.x;
@@ -217,7 +221,6 @@ export default function GameCanvas(props: Props) {
         const last = history.at(-1);
         history.length = 0;
         if (last) {
-          last.at = performance.now();
           history.push(last);
         }
         rebaseHistory = true;
@@ -240,10 +243,6 @@ export default function GameCanvas(props: Props) {
     addEventListener("pagehide", pageHide);
     addEventListener("pageshow", pageShow);
 
-    const path = (points: Snake["pts"]) => {
-      ctx.beginPath();
-      traceBodyCurve(ctx, points);
-    };
     const frame = (now: number) => {
       const cfg = latestProps.current.config,
         d = Math.min(CAPS[cfg.quality], devicePixelRatio || 1);
@@ -256,12 +255,12 @@ export default function GameCanvas(props: Props) {
         c.height = h;
       }
       sendInput();
-      // A short interpolation buffer absorbs jitter. Deaths and food ownership always come from authority.
-      const renderAt = now - 100;
+      // Simulation-time playback absorbs arrival jitter. Deaths and food ownership come from authority.
+      const renderTick = playback.sample(now, history[0]?.state.tick ?? 0, STEP_MS);
       let a = history[0],
         b = history.at(-1);
       for (let i = 1; i < history.length; i++) {
-        if (history[i]!.at >= renderAt) {
+        if (history[i]!.state.tick >= renderTick) {
           a = history[i - 1];
           b = history[i];
           break;
@@ -269,7 +268,9 @@ export default function GameCanvas(props: Props) {
         a = history[i];
       }
       const alpha =
-        a && b && b.at > a.at ? Math.max(0, Math.min(1, (renderAt - a.at) / (b.at - a.at))) : 1;
+        a && b && b.state.tick > a.state.tick
+          ? Math.max(0, Math.min(1, (renderTick - a.state.tick) / (b.state.tick - a.state.tick)))
+          : 1;
       const old = a?.snakes;
       const currentIds = latest ? snapshotIndex(latest).snakes : undefined;
       let visibleCount = 0;
@@ -363,6 +364,10 @@ export default function GameCanvas(props: Props) {
       }
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      let visibleBodyPoints = 0;
+      for (const snake of all)
+        if (snake.pts.some((p) => Math.abs(p.x - cam.x) < vw && Math.abs(p.y - cam.y) < vh))
+          visibleBodyPoints += snake.pts.length;
       for (const s of all) {
         const head = s.pts[0]!,
           radius = snakeWidth(s);
@@ -373,10 +378,13 @@ export default function GameCanvas(props: Props) {
           )
         )
           continue;
-        const skin = SKIN_BY[s.skin] ?? SKINS[0]!,
-          colors = skin.colors,
-          first = colors[0]!;
-        const divisions = cfg.quality === "low" ? 2 : 4;
+        const skin = SKIN_BY[s.skin] ?? SKINS[0]!;
+        const divisions =
+          s.pts.length > 160 || visibleBodyPoints > 1200
+            ? 1
+            : cfg.quality === "low" || s.pts.length > 80 || visibleBodyPoints > 600
+              ? 2
+              : 4;
         let points = spines.get(s.id);
         if (!points) {
           points = [];
@@ -387,55 +395,17 @@ export default function GameCanvas(props: Props) {
           points.length > 1
             ? Math.atan2(points[0]!.y - points[1]!.y, points[0]!.x - points[1]!.x)
             : s.angle;
-        path(points);
-        if (s.boost && cfg.boostFx) {
-          ctx.strokeStyle = `${first}44`;
-          ctx.lineWidth = radius * 2 + 14;
-          ctx.stroke();
-        }
-        ctx.strokeStyle = "rgba(0,0,0,0.5)";
-        ctx.lineWidth = radius * 2 + 4;
-        ctx.stroke();
-        if (skin.type === "hue") {
-          ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`;
-          ctx.lineWidth = radius * 2;
-          ctx.stroke();
-          ctx.strokeStyle = `hsl(${s.hue | 0},90%,64%)`;
-          ctx.lineWidth = radius;
-          ctx.stroke();
-        } else if (skin.type === "bands" || skin.type === "pulse") {
-          for (let i = 0; i < colors.length; i++) {
-            ctx.strokeStyle = colors[i]!;
-            ctx.lineWidth = radius * 2 * (1 - i / colors.length);
-            ctx.stroke();
-          }
-        } else {
-          const stride = (cfg.quality === "low" ? 6 : 4) * divisions,
-            period = stride * colors.length;
-          const shift =
-            skin.type === "stripes" || cfg.quality === "low"
-              ? 0
-              : (Math.floor(now / 90) * divisions) % period;
-          for (let j = 0; j < colors.length; j++) {
-            ctx.beginPath();
-            for (let i = ((j * stride + shift) % period) - period; i < points.length; i += period) {
-              const start = Math.max(0, i),
-                end = Math.min(i + stride - 1, points.length - 1);
-              if (end >= start) traceBodyCurve(ctx, points, start, end);
-            }
-            ctx.strokeStyle =
-              skin.type === "anim"
-                ? `hsl(${((now / 12 + (j * 360) / colors.length) % 360) | 0},100%,64%)`
-                : colors[j]!;
-            ctx.lineWidth = radius * 2;
-            ctx.stroke();
-          }
-        }
-        // A single highlight follows the body; expensive shadows and per-segment gradients are avoided.
-        path(points);
-        ctx.strokeStyle = "rgba(255,255,255,0.24)";
-        ctx.lineWidth = radius * 0.38;
-        ctx.stroke();
+        drawSnakeSurface(
+          ctx,
+          points,
+          radius,
+          skin,
+          s.hue,
+          now,
+          cfg.quality === "low" || divisions === 1,
+          divisions,
+          s.boost && cfg.boostFx,
+        );
         if (isSpawnProtected(s, latest?.tick ?? 0)) {
           ctx.strokeStyle = "rgba(160,235,255,0.85)";
           ctx.lineWidth = 2;
