@@ -31,6 +31,7 @@ type PackedFrame = {
   snakes: {
     source: Snake;
     full: PackedSnake;
+    compact: PackedSnake;
     head: PackedSnake;
     minX: number;
     minY: number;
@@ -45,6 +46,21 @@ type PackedFrame = {
 // Snapshot and packed contents are immutable while retained. Share only within
 // that exact snapshot; weak keys release caches when the bounded history does.
 const packedFrames = new WeakMap<Snapshot, PackedFrame>();
+const COMPACT_POINTS = 160;
+/** Supabase broadcast has no per-peer view, so long bodies are decimated for the whole room. */
+function compactPoints(points: number[]): number[] {
+  const count = points.length / 2;
+  if (count <= COMPACT_POINTS) return points;
+  const stride = Math.ceil(count / COMPACT_POINTS);
+  const out: number[] = [];
+  let last = -1;
+  for (let i = 0; i < count; i += stride) {
+    out.push(points[i * 2]!, points[i * 2 + 1]!);
+    last = i;
+  }
+  if (last !== count - 1) out.push(points[(count - 1) * 2]!, points[(count - 1) * 2 + 1]!);
+  return out;
+}
 function packedFrame(snapshot: Snapshot): PackedFrame {
   let frame = packedFrames.get(snapshot);
   if (frame) return frame;
@@ -78,7 +94,9 @@ function packedFrame(snapshot: Snapshot): PackedFrame {
       ];
       const head: PackedSnake = [...full];
       head[8] = points.slice(0, 2);
-      return { source: s, full, head, minX, minY, maxX, maxY };
+      const compact: PackedSnake = [...full];
+      compact[8] = compactPoints(points);
+      return { source: s, full, compact, head, minX, minY, maxX, maxY };
     }),
     deaths: snapshot.deaths.map((d) => [d.id, d.len, d.tick]),
     motion: snapshot.snakes
@@ -129,6 +147,7 @@ export function packSnapshot(
   current: Snapshot,
   previous?: Snapshot,
   view?: { id: string; radius: number },
+  compact = false,
 ): WireSnapshot {
   const full = !previous || current.tick % 30 === 0;
   const frame = packedFrame(current);
@@ -152,7 +171,7 @@ export function packSnapshot(
           s.pts.some(
             (p) => Math.abs(p.x - focus.x) < view.radius && Math.abs(p.y - focus.y) < view.radius,
           ));
-      return visible ? packed.full : packed.head;
+      return visible ? (compact ? packed.compact : packed.full) : packed.head;
     }),
     foods,
     removed,

@@ -22,6 +22,13 @@ const createWorker = () =>
 export class RealtimeConnection implements ArenaConnection {
   private readonly id = crypto.randomUUID();
   private readonly joined = Date.now();
+  private readonly capable = (() => {
+    if (typeof navigator === "undefined") return true;
+    const cores = navigator.hardwareConcurrency ?? 8;
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+    const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    return !coarse && cores >= 4 && memory >= 4;
+  })();
   private readonly client;
   private channel;
   private worker: AuthorityWorker | undefined;
@@ -151,7 +158,12 @@ export class RealtimeConnection implements ArenaConnection {
   }
 
   private async track(): Promise<void> {
-    await this.channel.track({ at: this.joined, visible: !document.hidden, checkpoint: true });
+    await this.channel.track({
+      at: this.joined,
+      visible: !document.hidden,
+      capable: this.capable,
+      checkpoint: true,
+    });
     if (!this.closed && this.connected) this.elect();
   }
   private broadcast(event: string, payload: unknown): Promise<string> {
@@ -171,7 +183,7 @@ export class RealtimeConnection implements ArenaConnection {
     if (this.closed || !this.connected) return;
     const presence = this.channel.presenceState() as Record<
       string,
-      { at?: number; visible?: boolean }[]
+      { at?: number; visible?: boolean; capable?: boolean }[]
     >;
     this.events.count(Object.keys(presence).length);
     this.worker?.postMessage({ type: "members", ids: Object.keys(presence) });
@@ -187,7 +199,11 @@ export class RealtimeConnection implements ArenaConnection {
     this.candidate = next;
     // Keep the current worker running through transient tab switches. Only hand
     // over after sustained visibility; a departed host needs no visibility delay.
-    const delay = this.host && Object.hasOwn(presence, this.host) ? 1500 : 350;
+    const upgrading =
+      this.host &&
+      presence[this.host]?.[0]?.capable === false &&
+      presence[next!]?.[0]?.capable !== false;
+    const delay = this.host && Object.hasOwn(presence, this.host) ? (upgrading ? 3000 : 1500) : 350;
     this.election = setTimeout(() => {
       this.election = undefined;
       this.candidate = undefined;
@@ -283,7 +299,12 @@ export class RealtimeConnection implements ArenaConnection {
     const status = await this.broadcast("state", {
       host: this.id,
       world: this.world,
-      state: packSnapshot(pending.snapshot, pending.full ? undefined : this.published),
+      state: packSnapshot(
+        pending.snapshot,
+        pending.full ? undefined : this.published,
+        undefined,
+        true,
+      ),
     });
     if (generation !== this.generation || worker !== this.worker) return;
     this.sending = false;

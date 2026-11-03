@@ -60,7 +60,14 @@ export default function GameCanvas(props: Props) {
       fpsClock = performance.now(),
       lastHud = 0,
       lastInput = 0;
-    let lastFrame = performance.now();
+    let lastFrame = performance.now(),
+      leaders: Snake[] = [],
+      leadersAt = -Infinity;
+    const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    const lowEnd =
+      coarse &&
+      ((navigator.hardwareConcurrency ?? 8) <= 4 ||
+        ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4);
     const history: {
       state: Snapshot;
       foods: Map<number, Snapshot["foods"][number]>;
@@ -248,17 +255,22 @@ export default function GameCanvas(props: Props) {
     addEventListener("pageshow", pageShow);
 
     const frame = (now: number) => {
-      const cfg = latestProps.current.config,
-        d = Math.min(CAPS[cfg.quality], devicePixelRatio || 1);
-      const dt = Math.min(3, (now - lastFrame) / 16.667);
+      raf = requestAnimationFrame(frame);
+      sendInput();
+      // Phones with 120 Hz panels do not need two full world paints per frame.
+      if (now - lastFrame < 15) return;
+      const elapsed = now - lastFrame;
       lastFrame = now;
+      const cfg = latestProps.current.config,
+        quality = lowEnd ? "low" : coarse && cfg.quality === "high" ? "medium" : cfg.quality,
+        d = Math.min(CAPS[quality], devicePixelRatio || 1);
+      const dt = Math.min(6, elapsed / 16.667);
       const w = Math.round(innerWidth * d),
         h = Math.round(innerHeight * d);
       if (c.width !== w || c.height !== h) {
         c.width = w;
         c.height = h;
       }
-      sendInput();
       // Simulation-time playback absorbs arrival jitter. Deaths and food ownership come from authority.
       const renderTick = playback.sample(now, history[0]?.state.tick ?? 0, STEP_MS);
       let a = history[0],
@@ -383,7 +395,7 @@ export default function GameCanvas(props: Props) {
         const divisions =
           s.pts.length > 160 || visibleBodyPoints > 1200
             ? 1
-            : cfg.quality === "low" || s.pts.length > 80 || visibleBodyPoints > 600
+            : quality === "low" || s.pts.length > 80 || visibleBodyPoints > 600
               ? 2
               : 4;
         let points = spines.get(s.id);
@@ -403,7 +415,7 @@ export default function GameCanvas(props: Props) {
           skin,
           s.hue,
           now,
-          cfg.quality === "low" || divisions === 1,
+          quality === "low" || divisions === 1 || !active,
           divisions,
           s.boost && cfg.boostFx,
         );
@@ -414,7 +426,7 @@ export default function GameCanvas(props: Props) {
           ctx.arc(head.x, head.y, radius + 7, 0, Math.PI * 2);
           ctx.stroke();
         }
-        if (skin.spark && cfg.boostFx && cfg.quality !== "low") {
+        if (skin.spark && cfg.boostFx && quality !== "low") {
           ctx.fillStyle = skin.spark;
           for (let i = 0; i < 4; i++) {
             const p = s.pts[Math.floor((now / 45 + (i * s.pts.length) / 4) % s.pts.length)]!;
@@ -441,7 +453,7 @@ export default function GameCanvas(props: Props) {
           );
           ctx.fill();
         }
-        if (cfg.names) {
+        if (cfg.names && active) {
           const key = `${s.id}:${s.name}`;
           let label = labels.get(key);
           if (!label) {
@@ -460,7 +472,10 @@ export default function GameCanvas(props: Props) {
         }
       }
       ctx.setTransform(d, 0, 0, d, 0, 0);
-      const leaders = [...all].sort((x, y) => y.len - x.len).slice(0, 10);
+      if (now - leadersAt > 250) {
+        leaders = [...all].sort((x, y) => y.len - x.len).slice(0, 10);
+        leadersAt = now;
+      }
       ctx.fillStyle = "rgba(10,14,30,0.65)";
       ctx.fillRect(innerWidth - 200, 14, 186, 30 + leaders.length * 20);
       ctx.font = "700 13px Space Grotesk, sans-serif";
@@ -515,7 +530,6 @@ export default function GameCanvas(props: Props) {
         fpsCount = 0;
         fpsClock = now;
       }
-      raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => {

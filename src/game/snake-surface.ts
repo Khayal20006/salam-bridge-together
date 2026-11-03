@@ -16,7 +16,10 @@ export function drawSnakeSurface(
 ): void {
   if (points.length < 2) return;
   const colors = skin.colors,
-    first = colors[0]!;
+    first = colors[0]!,
+    // Long snakes are the most expensive to stripe. Keep their surface cheap;
+    // the outline, undercoat and one highlight still read well at gameplay zoom.
+    plain = low || points.length > 320;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -47,36 +50,38 @@ export function drawSnakeSurface(
     ctx.strokeStyle = first;
     ctx.lineWidth = radius * 2;
     ctx.stroke();
-    const stride = 4 * divisions,
-      period = stride * colors.length;
-    const shift = skin.type === "stripes" || low ? 0 : ((now / 90) * divisions) % period;
-    const color = (j: number) =>
-      skin.type === "anim"
-        ? `hsl(${(now / 12 + (j * 360) / colors.length) % 360},100%,64%)`
-        : colors[j]!;
-    ctx.lineCap = "butt";
-    for (let j = 0; j < colors.length; j++) {
-      ctx.beginPath();
-      for (let i = j * stride + shift - period; i < points.length; i += period)
-        traceBodyRange(ctx, points, i, i + stride);
-      ctx.strokeStyle = color(j);
-      ctx.stroke();
-    }
-    ctx.lineCap = "round";
-    for (const index of [0, points.length - 1]) {
-      const j =
-        ((Math.floor((index - shift) / stride) % colors.length) + colors.length) % colors.length;
-      const p = points[index]!;
-      ctx.fillStyle = color(j);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-      ctx.fill();
+    if (!plain) {
+      const stride = 4 * divisions,
+        period = stride * colors.length;
+      const shift = skin.type === "stripes" ? 0 : ((now / 90) * divisions) % period;
+      const color = (j: number) =>
+        skin.type === "anim"
+          ? `hsl(${(now / 12 + (j * 360) / colors.length) % 360},100%,64%)`
+          : colors[j]!;
+      ctx.lineCap = "butt";
+      for (let j = 0; j < colors.length; j++) {
+        ctx.beginPath();
+        for (let i = j * stride + shift - period; i < points.length; i += period)
+          traceBodyRange(ctx, points, i, i + stride);
+        ctx.strokeStyle = color(j);
+        ctx.stroke();
+      }
+      ctx.lineCap = "round";
+      for (const index of [0, points.length - 1]) {
+        const j =
+          ((Math.floor((index - shift) / stride) % colors.length) + colors.length) % colors.length;
+        const p = points[index]!;
+        ctx.fillStyle = color(j);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
   // A few shared strokes give volume without allocating a gradient for every body piece.
   ctx.beginPath();
   traceBodyCurve(ctx, points);
-  if (!low) {
+  if (!plain) {
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = radius * 1.3;
     ctx.stroke();
@@ -84,7 +89,7 @@ export function drawSnakeSurface(
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = radius * 0.42;
   ctx.stroke();
-  if (!low) {
+  if (!plain) {
     ctx.strokeStyle = "rgba(255,255,255,0.28)";
     ctx.lineWidth = Math.max(0.8, radius * 0.1);
     ctx.stroke();

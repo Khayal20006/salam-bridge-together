@@ -20,6 +20,15 @@ export const DEFAULT_CONFIG: GameConfig = {
   showFps: false,
 };
 
+/** Phones get a cheap first-run preset; saved settings still win. */
+export function deviceConfig(): GameConfig {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+    return DEFAULT_CONFIG;
+  return window.matchMedia("(pointer: coarse)").matches
+    ? { ...DEFAULT_CONFIG, quality: "low", grid: false, glow: false }
+    : DEFAULT_CONFIG;
+}
+
 const PAID_IDS = new Set(["rgb", "plasma", "legend"]);
 export type Progress = { coins: number; owned: string[]; skin: string };
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -49,8 +58,8 @@ function parse(value: string | null): unknown {
   }
 }
 
-export function normalizeConfig(value: unknown): GameConfig {
-  const config = { ...DEFAULT_CONFIG };
+export function normalizeConfig(value: unknown, fallback: GameConfig = DEFAULT_CONFIG): GameConfig {
+  const config = { ...fallback };
   if (!record(value)) return config;
   if (value["quality"] === "low" || value["quality"] === "medium" || value["quality"] === "high") {
     config.quality = value["quality"];
@@ -62,7 +71,7 @@ export function normalizeConfig(value: unknown): GameConfig {
 }
 
 export function loadConfig(): GameConfig {
-  return normalizeConfig(parse(readStorage("neon-cfg")));
+  return normalizeConfig(parse(readStorage("neon-cfg")), deviceConfig());
 }
 
 export function normalizeProgress(value: unknown): Progress {
@@ -111,7 +120,7 @@ export function saveProgress(value: Progress, uid: string | null): void {
 }
 
 export function electHost(
-  presence: Record<string, { at?: number; visible?: boolean }[]>,
+  presence: Record<string, { at?: number; visible?: boolean; capable?: boolean }[]>,
 ): string | null {
   let host: string | null = null,
     first = Infinity,
@@ -119,7 +128,9 @@ export function electHost(
   for (const [key, entries] of Object.entries(presence)) {
     const at = entries[0]?.at;
     if (typeof at !== "number" || !Number.isFinite(at) || at < 0) continue;
-    const rank = entries[0]?.visible === false ? 1 : 0;
+    // A hidden tab throttles timers, so visibility wins. Among visible peers,
+    // prefer desktop-class hardware before falling back to join order.
+    const rank = (entries[0]?.visible === false ? 2 : 0) + (entries[0]?.capable === false ? 1 : 0);
     if (
       rank < priority ||
       (rank === priority && (at < first || (at === first && (host === null || key < host))))

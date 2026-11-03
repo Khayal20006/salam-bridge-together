@@ -62,6 +62,22 @@ describe("shared packet preparation", () => {
     expect(a).toEqual(savedA);
     expect(current).toEqual(saved);
   });
+  it("decimates long fallback bodies while keeping both endpoints", () => {
+    const current = state(3, []);
+    current.snakes[0] = {
+      ...snake("a", 0),
+      pts: Array.from({ length: 480 }, (_, i) => ({ x: i, y: 0 })),
+    };
+    const packet = packSnapshot(current, undefined, undefined, true),
+      points = packet.snakes.find((s) => s[0] === "a")![8];
+    expect(points.length).toBeGreaterThanOrEqual(2);
+    expect(points.length).toBeLessThan(480);
+    expect(points.length % 2).toBe(0);
+    expect(points.slice(0, 2)).toEqual([0, 0]);
+    expect(points.slice(-2)).toEqual([479, 0]);
+    expect(unpackSnapshot(packet)).not.toBeNull();
+    expect(packSnapshot(current).snakes.find((s) => s[0] === "a")![8]).toHaveLength(960);
+  });
   it("keeps a nearby tail visible and checks points after a bounding-box overlap", () => {
     const current = state(3, []);
     current.snakes.push({

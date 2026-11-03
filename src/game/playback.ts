@@ -30,7 +30,8 @@ export class SnapshotPlayback {
 
   sample(now: number, oldest: number, stepMs: number): number {
     if (this.tick === undefined || this.newest === undefined) return oldest;
-    const elapsed = Math.max(0, Math.min(50, now - this.clock));
+    // Keep simulation time moving even when a slow device renders below 20 fps.
+    const elapsed = Math.max(0, Math.min(120, now - this.clock));
     this.clock = now;
     const sincePacket = Math.max(0, now - this.receivedAt);
     const target = this.newest + (sincePacket - this.delay) / stepMs;

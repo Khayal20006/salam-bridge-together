@@ -51,6 +51,15 @@ describe("saved game data", () => {
     expect(loadProgress("b").coins).toBe(0);
     expect(loadProgress().coins).toBe(0);
   });
+  it("starts touch devices on the cheap preset but keeps explicit settings", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      media: "(pointer: coarse)",
+    } as MediaQueryList);
+    expect(loadConfig()).toMatchObject({ quality: "low", grid: false, glow: false });
+    localStorage.setItem("neon-cfg", JSON.stringify({ quality: "high", glow: true }));
+    expect(loadConfig()).toMatchObject({ quality: "high", glow: true });
+  });
   it("keeps playing possible when browser storage is blocked", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("blocked");
@@ -73,5 +82,19 @@ describe("host election", () => {
     expect(electHost({ b: [{ at: 10 }], a: [{ at: 10 }], bad: [{ at: NaN }] })).toBe("a");
     expect(electHost({ invalid: [{}] })).toBeNull();
     expect(electHost({ first: [{ at: 0 }], later: [{ at: 1 }] })).toBe("first");
+  });
+  it("prefers a visible desktop-class host over a phone that joined earlier", () => {
+    expect(
+      electHost({
+        phone: [{ at: 0, visible: true, capable: false }],
+        desktop: [{ at: 1, visible: true, capable: true }],
+      }),
+    ).toBe("desktop");
+    expect(
+      electHost({
+        desktop: [{ at: 0, visible: true, capable: true }],
+        hidden: [{ at: 1, visible: false, capable: true }],
+      }),
+    ).toBe("desktop");
   });
 });

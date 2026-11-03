@@ -37,7 +37,7 @@ export class SmoothCamera {
     this.scale.snap(this.scale.value);
   }
   follow(x: number, y: number, zoom: number, elapsedMs: number): void {
-    const seconds = Math.min(0.05, Math.max(0, elapsedMs / 1000));
+    const seconds = Math.min(0.1, Math.max(0, elapsedMs / 1000));
     this.horizontal.follow(x, 20, seconds);
     this.vertical.follow(y, 20, seconds);
     this.scale.follow(zoom, 4, seconds);
