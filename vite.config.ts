@@ -6,7 +6,7 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import httpProxy from "http-proxy";
 import { defineConfig, type Plugin } from "vite";
-console.log("[arena-bridge] config module loaded");
+
 
 
 // The sandbox config wrapper drops `server.proxy`, so the arena socket is bridged
@@ -22,13 +22,12 @@ function arenaSocketBridge(): Plugin {
   return {
     name: "arena-socket-bridge",
     configureServer(server) {
-      console.log("[arena-bridge] configureServer httpServer:", !!server.httpServer);
       server.httpServer?.on("upgrade", (req, socket, head) => {
         const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-        console.log("[arena-bridge] upgrade", pathname, "match:", arenaRoom.test(pathname));
         if (arenaRoom.test(pathname)) proxy.ws(req, socket, head);
       });
     },
+
 
   };
 }
