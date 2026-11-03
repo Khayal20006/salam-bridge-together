@@ -7,6 +7,8 @@ import {
   snakeWidth,
   segmentsDistanceSquared,
   pointSegmentDistanceSquared,
+  isSpawnProtected,
+  SPAWN_PROTECTION_TICKS,
   type Snake,
 } from "./engine";
 import { packSnapshot, unpackSnapshot } from "./protocol";
@@ -36,6 +38,64 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it("protects a newborn against bodies for exactly 1500ms, then enables collisions", () => {
+    const arena = new Arena(random(), false);
+    arena.tick = SPAWN_PROTECTION_TICKS - 2;
+    const player = snake("player", -12, 0);
+    player.spawnTick = 0;
+    const wall = snake("wall", 0, -180, -Math.PI / 2);
+    wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
+    arena.snakes.set(player.id, player);
+    arena.snakes.set(wall.id, wall);
+    arena.step();
+    expect(isSpawnProtected(player, arena.tick)).toBe(true);
+    expect(arena.snakes.has(player.id)).toBe(true);
+    arena.step();
+    expect(isSpawnProtected(player, arena.tick)).toBe(false);
+    expect(arena.deaths.some((d) => d.id === player.id)).toBe(true);
+    expect(SPAWN_PROTECTION_TICKS * STEP_MS).toBeCloseTo(1500);
+  });
+  it("does not let a protected newborn kill an unprotected opponent", () => {
+    const arena = new Arena(random(), false);
+    const newborn = snake("a", -9, 0),
+      opponent = snake("b", 9, 0, Math.PI);
+    newborn.spawnTick = 0;
+    for (const s of [newborn, opponent]) arena.snakes.set(s.id, s);
+    arena.step();
+    expect(arena.snakes.has(newborn.id)).toBe(true);
+    expect(arena.snakes.has(opponent.id)).toBe(true);
+    expect(arena.deaths).toHaveLength(0);
+  });
+  it("uses the visible head radius so a grazing body hit cannot pass through", () => {
+    const arena = new Arena(random(), false);
+    const player = snake("player", -24, 0),
+      wall = snake("wall", 0, -180, -Math.PI / 2);
+    wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
+    arena.snakes.set(player.id, player);
+    arena.snakes.set(wall.id, wall);
+    arena.step();
+    expect(arena.deaths.some((d) => d.id === player.id)).toBe(true);
+  });
+  it("does not renew protection on repeated join or disable the world boundary", () => {
+    const arena = new Arena(random(), false);
+    const player = arena.join("player", "Player", "hue")!;
+    arena.tick = 10;
+    expect(arena.join("player", "Player", "hue")!.spawnTick).toBe(0);
+    player.pts = Array.from({ length: 10 }, (_, i) => ({ x: 2999 - i * 8, y: 0 }));
+    player.angle = player.target = 0;
+    arena.step();
+    expect(arena.deaths.some((d) => d.id === player.id)).toBe(true);
+  });
+  it("replicates the same protection expiry to every client", () => {
+    const arena = new Arena(random(), false);
+    const player = arena.join("player", "Player", "hue")!;
+    const first = unpackSnapshot(packSnapshot(arena.snapshot()))!;
+    const second = unpackSnapshot(packSnapshot(arena.snapshot()))!;
+    for (const tick of [0, 44, 45, 46]) {
+      expect(isSpawnProtected(first.snakes[0]!, tick)).toBe(isSpawnProtected(player, tick));
+      expect(isSpawnProtected(second.snakes[0]!, tick)).toBe(isSpawnProtected(player, tick));
+    }
+  });
   it("pulls nearby food toward the mouth before eating it", () => {
     const arena = new Arena(random(), false),
       player = snake("a", 0, 0);

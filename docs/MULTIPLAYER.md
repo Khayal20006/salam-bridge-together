@@ -18,6 +18,12 @@ New snakes must have clearance along their entire body. If a safe location canno
 be found, spawning is rejected rather than placing a snake inside another one.
 Body detail is capped at 240 points. Eating increases length gradually while the
 body radius stays at 11 world units; food does not increase thickness.
+Every newborn has 45 simulation steps (1500 ms) of protection against other
+snakes. Its body cannot kill another player during protection. The world boundary
+still kills, and repeated join messages cannot extend protection. All peers derive
+the shield from the replicated spawn tick; a pale ring marks it on the head.
+After protection expires, head and body contact use the full visible 11-unit head
+radius, preventing visible grazing hits from passing through a smaller hitbox.
 
 ## Transports
 
@@ -96,7 +102,7 @@ the custom domain has been republished. On 2026-11-03 the HTML served by
 `https://neonworm.app/` still identified source commit
 `b9ad74b40c010489b08af0dfa191d7a7fe4d7742`, while GitHub main contained newer code.
 Publish the updated project in Lovable and verify the served commit marker after
-publication. The graphics panel shows game version `2026.11.03.1`; the HUD shows
+publication. The graphics panel shows game version `2026.11.03.2`; the HUD shows
 the exact room ID to help two players verify their room and version. Reload old
 tabs after publishing a protocol update. Source push and live publication are
 separate verification steps.

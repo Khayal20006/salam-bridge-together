@@ -8,6 +8,7 @@ export const MAX_PLAYERS = 50;
 export const BOT_COUNT = 18;
 export const BASE_SPEED = 156;
 export const BOOST_SPEED = 420;
+export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 1;
@@ -56,6 +57,8 @@ export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
 export const snakeWidth = (_s: Pick<Snake, "len">) => 11;
+export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
+  s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>
   Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.4));
 export const cloneSnake = (s: Snake): Snake => ({ ...s, pts: s.pts.map((p) => ({ ...p })) });
@@ -282,6 +285,7 @@ export class Arena {
     type Body = { id: string; a: Point; b: Point; radius: number };
     const bodies = new SpatialGrid<Body>(100);
     for (const s of this.snakes.values()) {
+      if (isSpawnProtected(s, this.tick)) continue;
       for (let i = 2; i < s.pts.length; i++) {
         const a = s.pts[i - 1]!,
           b = s.pts[i]!,
@@ -301,12 +305,14 @@ export class Arena {
       const s = snakes[i]!,
         head = s.pts[0]!,
         old = previous.get(s.id)!,
-        radius = snakeWidth(s) * 0.6;
+        radius = snakeWidth(s);
       if (Math.hypot(head.x, head.y) + radius >= WORLD) dead.add(s.id);
+      if (isSpawnProtected(s, this.tick)) continue;
       for (let j = i + 1; j < snakes.length; j++) {
         const other = snakes[j]!,
           a = previous.get(other.id)!,
           b = other.pts[0]!;
+        if (isSpawnProtected(other, this.tick)) continue;
         // Relative swept motion prevents head-on tunnelling at boost speed.
         if (
           pointSegmentDistanceSquared(
@@ -314,7 +320,7 @@ export class Arena {
             { x: old.x - a.x, y: old.y - a.y },
             { x: head.x - b.x, y: head.y - b.y },
           ) <
-          (radius + snakeWidth(other) * 0.6) ** 2
+          (radius + snakeWidth(other)) ** 2
         ) {
           const difference = s.len - other.len;
           const winner =
@@ -333,10 +339,10 @@ export class Arena {
       }
     }
     for (const s of snakes) {
-      if (dead.has(s.id)) continue;
+      if (dead.has(s.id) || isSpawnProtected(s, this.tick)) continue;
       const head = s.pts[0]!,
         old = previous.get(s.id)!,
-        radius = snakeWidth(s) * 0.6;
+        radius = snakeWidth(s);
       for (const body of bodies.query(
         Math.min(old.x, head.x) - radius,
         Math.min(old.y, head.y) - radius,

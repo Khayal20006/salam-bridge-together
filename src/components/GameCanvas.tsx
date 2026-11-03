@@ -2,7 +2,15 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { SKIN_BY, SKINS } from "@/lib/skins";
 import type { GameConfig } from "@/lib/game-state";
 import { connectArena } from "@/game/connection";
-import { WORLD, SEG, snakeWidth, cloneSnake, type Snake, type Snapshot } from "@/game/engine";
+import {
+  WORLD,
+  SEG,
+  snakeWidth,
+  isSpawnProtected,
+  cloneSnake,
+  type Snake,
+  type Snapshot,
+} from "@/game/engine";
 import { interpolateAngle, traceBodyCurve } from "@/game/movement";
 
 type Props = {
@@ -360,6 +368,13 @@ export default function GameCanvas(props: Props) {
         ctx.strokeStyle = "rgba(255,255,255,0.24)";
         ctx.lineWidth = radius * 0.38;
         ctx.stroke();
+        if (isSpawnProtected(s, latest?.tick ?? 0)) {
+          ctx.strokeStyle = "rgba(160,235,255,0.85)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(head.x, head.y, radius + 7, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         if (skin.spark && cfg.boostFx && cfg.quality !== "low") {
           ctx.fillStyle = skin.spark;
           for (let i = 0; i < 4; i++) {
