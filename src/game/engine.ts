@@ -157,7 +157,7 @@ export class Arena {
       r = Math.sqrt(this.random()) * radius;
     return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
   }
-  private food(p = this.position(), v = 0.3): void {
+  private food(p = this.position(), v = 0.3, radius = Math.min(12, 3 + Math.sqrt(v) * 1.4)): void {
     if (this.foods.size >= FOOD_LIMIT) return;
     const id = ++this.foodId;
     this.foods.set(id, {
@@ -165,7 +165,7 @@ export class Arena {
       id,
       v,
       hue: Math.floor(this.random() * 24),
-      r: Math.min(12, 3 + Math.sqrt(v) * 1.4),
+      r: radius,
     });
   }
   private replenishFood(): void {
@@ -376,8 +376,15 @@ export class Arena {
     for (const s of snakes) {
       if (dead.has(s.id)) {
         this.deaths.push({ id: s.id, len: s.len, tick: this.tick });
-        for (let i = 0; i < s.pts.length; i += 3)
-          this.food({ ...s.pts[i]! }, Math.min(8, 2 + s.len / 60));
+        const drops = Math.ceil(s.pts.length / 3);
+        // Visible remains scale with the dead snake; recovered growth is bounded
+        // independently so a large-looking pellet cannot multiply mass on death.
+        const value = Math.min(
+          8,
+          Math.max(0.3, (Math.max(0, s.len - 10) * 0.55) / (drops * FOOD_GROWTH_MULTIPLIER)),
+        );
+        const radius = Math.min(16, 3 + (snakeWidth(s) - 11) * 1.25);
+        for (let i = 0; i < s.pts.length; i += 3) this.food({ ...s.pts[i]! }, value, radius);
         this.leave(s.id);
         continue;
       }

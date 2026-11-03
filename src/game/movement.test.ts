@@ -10,6 +10,24 @@ import {
 } from "./movement";
 
 describe("fluid snake movement", () => {
+  it("reuses an owned prediction buffer without changing the travelled route or its source", () => {
+    const source = Array.from({ length: 24 }, (_, i) => ({ x: -i * 8, y: 0 }));
+    const saved = structuredClone(source);
+    const immutable = new BodyTrail(source),
+      reusable = new BodyTrail(source);
+    const output = structuredClone(source),
+      first = output[0];
+    for (let i = 1; i <= 90; i++) {
+      const head = { x: Math.sin(i / 30) * 120, y: (1 - Math.cos(i / 30)) * 120 };
+      expect(reusable.advance(head, 24, 8, output)).toEqual(immutable.advance(head, 24, 8));
+      expect(output[0]).toBe(first);
+    }
+    expect(source).toEqual(saved);
+    reusable.reset(source);
+    expect(reusable.advance({ x: 8, y: 0 }, 24, 8, output)).toEqual(
+      new BodyTrail(source).advance({ x: 8, y: 0 }, 24, 8),
+    );
+  });
   it.each([1, 2, 4])("preserves the neck curve at render detail %i", (detail) => {
     const body = [
       { x: 0, y: 0 },

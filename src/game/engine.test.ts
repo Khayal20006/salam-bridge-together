@@ -38,6 +38,34 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it("leaves large pellets from a large snake and small pellets from a small snake for all peers", () => {
+    const arena = new Arena(random(), false),
+      small = snake("small", 2998, -300),
+      large = snake("large", 2998, 300);
+    small.len = 10;
+    large.len = 500;
+    for (const s of [small, large]) {
+      s.pts = Array.from({ length: segmentCount(s.len) }, (_, i) => ({
+        x: 2998 - i * 8,
+        y: s.pts[0]!.y,
+      }));
+      arena.snakes.set(s.id, s);
+    }
+    arena.step();
+    expect(arena.deaths.map((d) => d.id)).toEqual(["small", "large"]);
+    const smallFood = [...arena.foods.values()].filter((f) => f.y === -300);
+    const largeFood = [...arena.foods.values()].filter((f) => f.y === 300);
+    expect(smallFood).toHaveLength(Math.ceil(small.pts.length / 3));
+    expect(largeFood).toHaveLength(Math.ceil(large.pts.length / 3));
+    expect(Math.min(...largeFood.map((f) => f.r))).toBeGreaterThan(
+      Math.max(...smallFood.map((f) => f.r)) * 2,
+    );
+    expect(Math.max(...largeFood.map((f) => f.r))).toBeLessThanOrEqual(16);
+    expect(largeFood.reduce((sum, f) => sum + f.v * 2.5, 0)).toBeLessThan(large.len * 0.6);
+    expect(Math.max(...largeFood.map((f) => f.v * 2.5))).toBeLessThanOrEqual(20);
+    const packet = packSnapshot(arena.snapshot());
+    expect(unpackSnapshot(packet)).toEqual(unpackSnapshot(JSON.parse(JSON.stringify(packet))));
+  });
   it("protects a newborn against bodies for exactly 1500ms, then enables collisions", () => {
     const arena = new Arena(random(), false);
     arena.tick = SPAWN_PROTECTION_TICKS - 2;

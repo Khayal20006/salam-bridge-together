@@ -59,8 +59,20 @@ export class LocalPrediction {
       this.lead = this.lead ? this.lead + (measured - this.lead) * 0.2 : measured;
     }
     for (const seq of this.sent.keys()) if (seq <= authority.inputSeq) this.sent.delete(seq);
-    this.snake = cloneSnake(authority);
-    this.trail = new BodyTrail(this.snake.pts);
+    if (sameLife && this.snake && this.trail) {
+      const points = this.snake.pts;
+      Object.assign(this.snake, authority, { pts: points });
+      for (let i = 0; i < authority.pts.length; i++) {
+        const p = points[i] ?? (points[i] = { x: 0, y: 0 });
+        p.x = authority.pts[i]!.x;
+        p.y = authority.pts[i]!.y;
+      }
+      points.length = authority.pts.length;
+      this.trail.reset(points);
+    } else {
+      this.snake = cloneSnake(authority);
+      this.trail = new BodyTrail(this.snake.pts);
+    }
     this.receivedAt = this.clock = at;
     if (sameLife && this.target !== undefined) this.advance(this.lead / 1000);
     const head = this.snake.pts[0]!;
@@ -97,7 +109,7 @@ export class LocalPrediction {
     while (remaining > 0.000001) {
       const step = Math.min(1 / 60, remaining);
       const head = advanceHead(this.snake, step);
-      this.snake.pts = this.trail.advance(head, segmentCount(this.snake.len), SEG);
+      this.snake.pts = this.trail.advance(head, segmentCount(this.snake.len), SEG, this.snake.pts);
       remaining -= step;
     }
   }

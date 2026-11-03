@@ -60,18 +60,36 @@ export function smoothSpine(
 
 /** Sample the travelled head path by distance, so every bend travels all the way to the tail. */
 export class BodyTrail {
-  private points: Point[];
+  private points: Point[] = [];
 
   constructor(body: Point[]) {
-    this.points = body.map((p) => ({ ...p }));
+    this.reset(body);
   }
 
-  advance(head: Point, count: number, spacing: number): Point[] {
+  reset(body: Point[]): void {
+    for (let i = 0; i < body.length; i++) {
+      const target = this.points[i] ?? (this.points[i] = { x: 0, y: 0 });
+      target.x = body[i]!.x;
+      target.y = body[i]!.y;
+    }
+    this.points.length = body.length;
+  }
+
+  /** Supply an owned scratch body for prediction; authority keeps fresh immutable bodies. */
+  advance(head: Point, count: number, spacing: number, output?: Point[]): Point[] {
     const first = this.points[0];
     if (!first || Math.hypot(head.x - first.x, head.y - first.y) > 0.000001) {
       this.points.unshift({ ...head });
     }
-    const body: Point[] = [{ ...head }];
+    const body: Point[] = output ?? [];
+    let written = 0;
+    const write = (x: number, y: number) => {
+      const p = body[written] ?? (body[written] = { x: 0, y: 0 });
+      p.x = x;
+      p.y = y;
+      written++;
+    };
+    write(head.x, head.y);
     let travelled = 0,
       nextSample = spacing;
     const keepDistance = (count + 2) * spacing;
@@ -82,9 +100,9 @@ export class BodyTrail {
         dy = b.y - a.y,
         length = Math.hypot(dx, dy);
       if (length < 0.000001) continue;
-      while (body.length < count && nextSample <= travelled + length + 0.000001) {
+      while (written < count && nextSample <= travelled + length + 0.000001) {
         const t = Math.max(0, Math.min(1, (nextSample - travelled) / length));
-        body.push({ x: a.x + dx * t, y: a.y + dy * t });
+        write(a.x + dx * t, a.y + dy * t);
         nextSample += spacing;
       }
       travelled += length;
@@ -94,6 +112,7 @@ export class BodyTrail {
       }
     }
     // Growth extends as more real path is travelled; it never creates a stack of stationary joints.
+    body.length = written;
     return body;
   }
 }

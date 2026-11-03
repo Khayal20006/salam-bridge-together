@@ -20,6 +20,22 @@ const player = (): Snake => ({
 });
 
 describe("local movement prediction", () => {
+  it("keeps authority bodies immutable across repeated pooled reconciliations and growth", () => {
+    const prediction = new LocalPrediction(),
+      source = player(),
+      shown = cloneSnake(source);
+    prediction.steer(0, false);
+    for (let frame = 0; frame < 20; frame++) {
+      const authority = cloneSnake(source);
+      authority.len += frame * 0.75;
+      for (const p of authority.pts) p.x += frame * 15.6;
+      const saved = structuredClone(authority);
+      prediction.reconcile(authority, frame * 100);
+      for (let at = frame * 100; at < (frame + 1) * 100; at += 16) prediction.renderInto(shown, at);
+      expect(authority).toEqual(saved);
+      expect(shown.pts[0]!.x).toBeGreaterThanOrEqual(authority.pts[0]!.x);
+    }
+  });
   it("does not kick a stationary tail sideways when reconciling a turn at the head", () => {
     const prediction = new LocalPrediction(),
       source = player(),

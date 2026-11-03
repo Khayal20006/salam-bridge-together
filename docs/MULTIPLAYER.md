@@ -275,3 +275,55 @@ adaptive detail measured 30.9 ms and 22.4 ms (the final neck-preserving body has
 variation. This deliberately expensive software
 rendering sample is not a guarantee of 60 FPS for that scene or production play.
 77 unit tests, typecheck, lint, the production build and the real browser check passed.
+
+## Shared encoding and bounded remains: 2026.11.03.8
+
+Rounded body tuples, far-view head tuples, death records and motion metadata are
+prepared once per immutable snapshot. Food deltas are shared only for the exact
+previous snapshot object; equal tick numbers alone cannot identify a baseline.
+View filtering and motion acknowledgements remain specific to each peer. A
+bounding box rejects distant bodies before checking points. Caches use weak keys
+and follow the lifetime of the existing bounded snapshot history. Callers must
+treat packed data as immutable.
+
+Local prediction reuses its owned body points and resets its travelled-path
+buffer on authority reconciliation. The authority still produces immutable
+bodies, so retained network/render snapshots cannot be overwritten by pooling.
+Tests cover scratch-buffer route equivalence, retained authority state, growth,
+different peer views, distinct delta baselines with the same tick, and nearby tails.
+
+The final comparison used the same current simulation and the original versus
+cached encoder for 100 publications to 50 recipients, including allocation
+sampling and packet hashing:
+
+| Measurement | Original encoder | Cached encoder |
+| --- | ---: | ---: |
+| Sampled cumulative allocation | 1188.89 MB | 656.61 MB |
+| Publication p50 | 19.95 ms | 13.21 ms |
+| Publication p95 | 26.95 ms | 17.74 ms |
+| Observed GC count | 107 | 60 |
+| Observed maximum GC | 5.61 ms | 4.29 ms |
+| Encoded bytes | 71,341,968 | 71,341,968 |
+
+Both packet streams had SHA-256
+`36d5d87248b57f8874e4035867e5412f0f5237650383ea5cdacff3536e763ada`.
+This is about 45% less sampled allocation and 34% lower p95 preparation time in
+one local workload. Allocation is cumulative work, not the browser's resident
+RAM usage; this is not a production network or 50-browser load test. Reproduce
+the encoder comparison with `BENCHMARK_PROTOCOL` pointing to a preserved original
+protocol module; the default benchmark uses the current encoder.
+
+Death pellets now visibly scale with the dead snake's width, from radius 3 up
+to 16. Their nutritional value is independent of their visible radius: recovered
+growth targets 55% of progress above the initial length, with a normal-food
+minimum and a maximum of 20 progress per pellet. Existing food-count and
+body-point limits still bound scene/server cost. Both clients receive the same
+pellet radius and value from authority. Normal food and live width growth use
+the existing formulas. This requested balance change is separate from the
+encoder equivalence comparison above, which uses that same balance on both sides.
+
+83 unit tests, TypeScript, ESLint, the production build, real WebSocket clients
+and a native browser smoke check passed. The two-browser Supabase suite also
+passed shared bots, host handoff, resync, refresh and disconnect recovery checks.
+The last live bundle check still reported 2026.11.03.3: pushing GitHub does not
+publish a new Lovable snapshot or deploy the standalone arena service.

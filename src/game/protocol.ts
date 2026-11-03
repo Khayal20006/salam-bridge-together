@@ -26,52 +26,45 @@ export type WireSnapshot = {
   motion?: [string, number, number, number][];
 };
 
-export function packSnapshot(
-  current: Snapshot,
-  previous?: Snapshot,
-  view?: { id: string; radius: number },
-): WireSnapshot {
-  const full = !previous || current.tick % 30 === 0;
-  const oldFoods = previous ? snapshotIndex(previous).foods : undefined;
-  const currentFoods = snapshotIndex(current).foods;
-  const foods: PackedFood[] = [];
-  for (const f of current.foods) {
-    const old = oldFoods?.get(f.id);
-    if (
-      full ||
-      !old ||
-      Math.round(old.x) !== Math.round(f.x) ||
-      Math.round(old.y) !== Math.round(f.y) ||
-      old.r !== f.r ||
-      old.hue !== f.hue ||
-      old.v !== f.v
-    )
-      foods.push([f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]);
-  }
-  const removed: number[] = [];
-  if (!full && oldFoods)
-    for (const id of oldFoods.keys()) if (!currentFoods.has(id)) removed.push(id);
-  const focus = view && current.snakes.find((s) => s.id === view.id)?.pts[0];
-  return {
-    v: PROTOCOL,
-    tick: current.tick,
-    base: full ? null : previous!.tick,
-    snakes: current.snakes.map((s): PackedSnake => {
-      // Far-away players remain on the minimap and leaderboard. Send full bodies only near the view.
-      const visible =
-        !view ||
-        !focus ||
-        s.id === view.id ||
-        s.pts.some(
-          (p) => Math.abs(p.x - focus.x) < view.radius && Math.abs(p.y - focus.y) < view.radius,
-        );
-      const count = visible ? s.pts.length : 1;
-      const points = new Array<number>(count * 2);
-      for (let i = 0; i < count; i++) {
-        points[i * 2] = Math.round(s.pts[i]!.x);
-        points[i * 2 + 1] = Math.round(s.pts[i]!.y);
+type FoodPacket = { foods: PackedFood[]; removed: number[] };
+type PackedFrame = {
+  snakes: {
+    source: Snake;
+    full: PackedSnake;
+    head: PackedSnake;
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  }[];
+  deaths: WireSnapshot["deaths"];
+  motion: NonNullable<WireSnapshot["motion"]>;
+  fullFood?: FoodPacket;
+  deltas: WeakMap<Snapshot, FoodPacket>;
+};
+// Snapshot and packed contents are immutable while retained. Share only within
+// that exact snapshot; weak keys release caches when the bounded history does.
+const packedFrames = new WeakMap<Snapshot, PackedFrame>();
+function packedFrame(snapshot: Snapshot): PackedFrame {
+  let frame = packedFrames.get(snapshot);
+  if (frame) return frame;
+  frame = {
+    snakes: snapshot.snakes.map((s) => {
+      const points = new Array<number>(s.pts.length * 2);
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (let i = 0; i < s.pts.length; i++) {
+        const p = s.pts[i]!;
+        points[i * 2] = Math.round(p.x);
+        points[i * 2 + 1] = Math.round(p.y);
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
       }
-      return [
+      const full: PackedSnake = [
         s.id,
         s.name,
         s.skin,
@@ -83,13 +76,88 @@ export function packSnapshot(
         points,
         s.spawnTick ?? 0,
       ];
+      const head: PackedSnake = [...full];
+      head[8] = points.slice(0, 2);
+      return { source: s, full, head, minX, minY, maxX, maxY };
+    }),
+    deaths: snapshot.deaths.map((d) => [d.id, d.len, d.tick]),
+    motion: snapshot.snakes
+      .filter((s) => !s.bot)
+      .map((s) => [s.id, s.inputSeq ?? 0, s.target, s.turnVelocity ?? 0]),
+    deltas: new WeakMap(),
+  };
+  packedFrames.set(snapshot, frame);
+  return frame;
+}
+
+function packedFood(
+  current: Snapshot,
+  previous: Snapshot | undefined,
+  frame: PackedFrame,
+): FoodPacket {
+  if (!previous) {
+    return (frame.fullFood ??= {
+      foods: current.foods.map((f) => [f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]),
+      removed: [],
+    });
+  }
+  let packet = frame.deltas.get(previous);
+  if (packet) return packet;
+  const oldFoods = snapshotIndex(previous).foods;
+  const currentFoods = snapshotIndex(current).foods;
+  const foods: PackedFood[] = [];
+  for (const f of current.foods) {
+    const old = oldFoods.get(f.id);
+    if (
+      !old ||
+      Math.round(old.x) !== Math.round(f.x) ||
+      Math.round(old.y) !== Math.round(f.y) ||
+      old.r !== f.r ||
+      old.hue !== f.hue ||
+      old.v !== f.v
+    )
+      foods.push([f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]);
+  }
+  const removed: number[] = [];
+  for (const id of oldFoods.keys()) if (!currentFoods.has(id)) removed.push(id);
+  packet = { foods, removed };
+  frame.deltas.set(previous, packet);
+  return packet;
+}
+
+export function packSnapshot(
+  current: Snapshot,
+  previous?: Snapshot,
+  view?: { id: string; radius: number },
+): WireSnapshot {
+  const full = !previous || current.tick % 30 === 0;
+  const frame = packedFrame(current);
+  const { foods, removed } = packedFood(current, full ? undefined : previous, frame);
+  const focus = view && current.snakes.find((s) => s.id === view.id)?.pts[0];
+  return {
+    v: PROTOCOL,
+    tick: current.tick,
+    base: full ? null : previous!.tick,
+    snakes: frame.snakes.map((packed): PackedSnake => {
+      const s = packed.source;
+      // Far-away players remain on the minimap and leaderboard. Send full bodies only near the view.
+      const visible =
+        !view ||
+        !focus ||
+        s.id === view.id ||
+        (packed.maxX > focus.x - view.radius &&
+          packed.minX < focus.x + view.radius &&
+          packed.maxY > focus.y - view.radius &&
+          packed.minY < focus.y + view.radius &&
+          s.pts.some(
+            (p) => Math.abs(p.x - focus.x) < view.radius && Math.abs(p.y - focus.y) < view.radius,
+          ));
+      return visible ? packed.full : packed.head;
     }),
     foods,
     removed,
-    deaths: current.deaths.map((d) => [d.id, d.len, d.tick]),
-    motion: current.snakes
-      .filter((s) => !s.bot && (!view || s.id === view.id))
-      .map((s) => [s.id, s.inputSeq ?? 0, s.target, s.turnVelocity ?? 0]),
+    deaths: frame.deaths,
+    motion: view ? frame.motion.filter((m) => m[0] === view.id) : frame.motion,
   };
 }
 

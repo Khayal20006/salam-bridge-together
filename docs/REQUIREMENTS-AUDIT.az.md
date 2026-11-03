@@ -67,3 +67,10 @@ tick-i ilə irəliləyir; dəyişkən bağlantı üçün 100–200 ms bufer var.
 fasiləsiz axır, daxili yumru kənarların üst-üstə düşməsi götürülüb. Sıx və uzun
 bədənlərdə çəkiliş yükü azalır; baş-boyun əyrisi qorunur. Qalınlaşma düsturu
 dəyişməyib. Lokal brauzer və ayrıca ağır çəkiliş ölçmələri MULTIPLAYER.md-dədir.
+
+2026.11.03.8: eyni snapshot üçün paket məlumatları bir dəfə hazırlanır; hər peer-in
+görünüşü və delta bazası ayrıca qorunur. Lokal proqnoz öz bədən nöqtələrini təkrar
+istifadə edir, ortaq kadrlar dəyişdirilmir. Son müqayisədə yeni ayrılan yaddaş
+təxminən 45%, yayım hazırlama p95 vaxtı 34% azaldı; hər iki kodlayıcının bütün
+paketləri eyni SHA-256 verdi. Böyük ilanın ölüm yemləri iri, kiçiyinki xırdadır;
+qalıqdan geri alınan böyümə məhdudlaşdırılıb. Normal böyümə və qalınlaşma saxlanıb.

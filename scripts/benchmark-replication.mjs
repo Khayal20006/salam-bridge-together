@@ -1,8 +1,9 @@
 import { PerformanceObserver, performance } from "node:perf_hooks";
 import { Session } from "node:inspector";
 import { setImmediate } from "node:timers/promises";
+import { createHash } from "node:crypto";
 import { Arena } from "../src/game/engine.ts";
-import { packSnapshot } from "../src/game/protocol.ts";
+const { packSnapshot } = await import(process.env.BENCHMARK_PROTOCOL || "../src/game/protocol.ts");
 
 let seed = 42;
 const random = () => (seed = (1664525 * seed + 1013904223) >>> 0) / 2 ** 32;
@@ -27,6 +28,7 @@ await post("HeapProfiler.startSampling", {
 const publication = [];
 let previous,
   bytes = 0;
+const packets = createHash("sha256");
 for (let tick = 0; tick < 300; tick++) {
   if (tick % 15 === 0) for (let p = 0; p < 50; p++) arena.join(`player-${p}`, `P${p}`, "hue");
   for (const snake of arena.snakes.values())
@@ -40,10 +42,13 @@ for (let tick = 0; tick < 300; tick++) {
   if (tick % 3 === 0) {
     const start = performance.now();
     const current = arena.snapshot();
-    for (let peer = 0; peer < 50; peer++)
-      bytes += Buffer.byteLength(
-        JSON.stringify(packSnapshot(current, previous, { id: `player-${peer}`, radius: 1600 })),
+    for (let peer = 0; peer < 50; peer++) {
+      const encoded = JSON.stringify(
+        packSnapshot(current, previous, { id: `player-${peer}`, radius: 1600 }),
       );
+      bytes += Buffer.byteLength(encoded);
+      packets.update(encoded);
+    }
     previous = current;
     publication.push(performance.now() - start);
   }
@@ -67,6 +72,7 @@ console.log(
       publishP50Ms: +publication[50].toFixed(2),
       publishP95Ms: +publication[95].toFixed(2),
       bytes,
+      packetSha256: packets.digest("hex"),
       note: "Seeded local simulation and encoding with allocation sampling; excludes browser rendering and Internet.",
     },
     null,
