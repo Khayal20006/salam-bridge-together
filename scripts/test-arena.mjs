@@ -36,11 +36,15 @@ try {
       const socket = new WsClient(`ws://127.0.0.1:${port}/arena/eu-1`, {
         headers: { Origin: origin },
       });
-      sockets.push(socket);
-      socket.once("open", () => resolve("open"));
+      // Probe sockets hang up at once so they never inflate the room's player count.
+      socket.once("open", () => {
+        socket.close();
+        resolve("open");
+      });
       socket.once("unexpected-response", (_req, res) => resolve(res.statusCode));
       socket.once("error", () => resolve("error"));
     });
+
   assert.equal(
     await openFrom("https://id-preview--92656ffd-5fa6-47aa-8ee5-4f6046baf72c.lovable.app"),
     "open",
