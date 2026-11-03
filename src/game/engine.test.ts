@@ -61,6 +61,25 @@ describe("authoritative arena", () => {
       }
     },
   );
+  it("slips through a tight gap between two snake bodies", () => {
+    const arena = new Arena(random(), false),
+      player = snake("player", 0, -200, -Math.PI / 2);
+    player.len = 40;
+    const gap = snakeWidth(player) * 2 * 1.25;
+    for (const x of [-gap / 2, gap / 2]) {
+      const wall = snake(`wall-${x}`, x, -1000, -Math.PI / 2);
+      wall.len = 40;
+      wall.pts = Array.from({ length: 400 }, (_, i) => ({ x, y: -1000 + i * 8 }));
+      arena.snakes.set(wall.id, wall);
+    }
+    arena.snakes.set(player.id, player);
+    for (let tick = 0; tick < 30; tick++) {
+      arena.input(player.id, { seq: tick, angle: -Math.PI / 2, boost: false });
+      arena.step();
+    }
+    expect(arena.snakes.has(player.id)).toBe(true);
+    expect(arena.deaths).toHaveLength(0);
+  });
   it("keeps normal travel steady and limits boost to about twice normal speed", () => {
     const normal = snake("normal", 0, 0),
       boosted = snake("boosted", 0, 0);
@@ -136,7 +155,7 @@ describe("authoritative arena", () => {
       wall = snake("wall", 0, -180, -Math.PI / 2);
     wall.len = 40;
     wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
-    const start = (snakeWidth(player) + snakeWidth(wall)) * 0.9 + (BASE_SPEED * STEP_MS) / 1000;
+    const start = (snakeWidth(player) + snakeWidth(wall)) * 0.7 + (BASE_SPEED * STEP_MS) / 1000;
     for (const p of player.pts) p.x -= start;
     arena.snakes.set(player.id, player);
     arena.snakes.set(wall.id, wall);

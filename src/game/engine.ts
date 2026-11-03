@@ -13,7 +13,9 @@ export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 2.5;
-const COLLISION_SCALE = 0.72;
+// A head may overlap 40% of the visual body before dying. The smaller hitbox
+// leaves a passable gap between two snakes, like slither.io.
+const COLLISION_SCALE = 0.6;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
