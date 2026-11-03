@@ -39,7 +39,7 @@ export function drawSnakeSurface(
     ctx.strokeStyle = `hsl(${hue | 0},90%,64%)`;
     ctx.lineWidth = radius;
     ctx.stroke();
-  } else if (skin.type === "bands" || skin.type === "pulse") {
+  } else if (!plain && (skin.type === "bands" || skin.type === "pulse")) {
     for (let i = 0; i < colors.length; i++) {
       ctx.strokeStyle = colors[i]!;
       ctx.lineWidth = radius * 2 * (1 - i / colors.length);

@@ -60,6 +60,25 @@ describe("saved game data", () => {
     localStorage.setItem("neon-cfg", JSON.stringify({ quality: "high", glow: true }));
     expect(loadConfig()).toMatchObject({ quality: "high", glow: true });
   });
+  it("starts plain and migrates old effect-heavy settings only once", () => {
+    expect(DEFAULT_CONFIG).toMatchObject({ grid: false, glow: false, boostFx: false });
+    localStorage.setItem(
+      "neon-cfg",
+      JSON.stringify({ quality: "high", grid: true, glow: true, boostFx: true, names: false }),
+    );
+    expect(loadConfig()).toMatchObject({
+      quality: "high",
+      grid: false,
+      glow: false,
+      boostFx: false,
+      names: false,
+    });
+    localStorage.setItem(
+      "neon-cfg",
+      JSON.stringify({ quality: "high", grid: false, glow: true, boostFx: false }),
+    );
+    expect(loadConfig()).toMatchObject({ quality: "high", glow: true });
+  });
   it("keeps playing possible when browser storage is blocked", () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("blocked");

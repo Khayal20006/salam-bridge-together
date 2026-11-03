@@ -373,7 +373,9 @@ export default function GameCanvas(props: Props) {
         if (Math.abs(x - cam.x) > vw || Math.abs(y - cam.y) > vh) continue;
         if (!cfg.glow) {
           ctx.fillStyle = FOOD_COLORS[f.hue]!;
-          ctx.fillRect(x - f.r, y - f.r, f.r * 2, f.r * 2);
+          ctx.beginPath();
+          ctx.arc(x, y, f.r, 0, Math.PI * 2);
+          ctx.fill();
         } else {
           const size = f.r * 2.5;
           ctx.drawImage(sprites[f.hue]!, x - size, y - size, size * 2, size * 2);
@@ -419,7 +421,7 @@ export default function GameCanvas(props: Props) {
           skin,
           s.hue,
           now,
-          quality === "low" || divisions === 1 || !active,
+          quality !== "high" || divisions === 1 || !active,
           divisions,
           s.boost && cfg.boostFx,
         );
@@ -430,7 +432,7 @@ export default function GameCanvas(props: Props) {
           ctx.arc(head.x, head.y, radius + 7, 0, Math.PI * 2);
           ctx.stroke();
         }
-        if (skin.spark && cfg.boostFx && quality !== "low") {
+        if (skin.spark && cfg.boostFx && quality === "high") {
           ctx.fillStyle = skin.spark;
           for (let i = 0; i < 4; i++) {
             const p = s.pts[Math.floor((now / 45 + (i * s.pts.length) / 4) % s.pts.length)]!;

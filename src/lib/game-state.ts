@@ -12,13 +12,16 @@ export type GameConfig = {
 
 export const DEFAULT_CONFIG: GameConfig = {
   quality: "medium",
-  grid: true,
-  glow: true,
-  boostFx: true,
+  grid: false,
+  glow: false,
+  boostFx: false,
   names: true,
   minimap: true,
   showFps: false,
 };
+
+/** Visual effects are opt-in; plain surfaces keep the arena fast like slither.io. */
+const CONFIG_REVISION = "2";
 
 /** Phones get a cheap first-run preset; saved settings still win. */
 export function deviceConfig(): GameConfig {
@@ -71,7 +74,22 @@ export function normalizeConfig(value: unknown, fallback: GameConfig = DEFAULT_C
 }
 
 export function loadConfig(): GameConfig {
-  return normalizeConfig(parse(readStorage("neon-cfg")), deviceConfig());
+  const saved = parse(readStorage("neon-cfg")),
+    fallback = deviceConfig();
+  if (readStorage("neon-cfg-rev") === CONFIG_REVISION) return normalizeConfig(saved, fallback);
+  const config = normalizeConfig(saved, fallback);
+  // One-time migration: older builds defaulted to glow, grid and boost effects,
+  // which made weaker phones stutter. Keep the chosen quality but start plain.
+  const migrated: GameConfig = {
+    ...config,
+    grid: false,
+    glow: false,
+    boostFx: false,
+    quality: fallback.quality === "low" ? "low" : config.quality,
+  };
+  writeStorage("neon-cfg", JSON.stringify(migrated));
+  writeStorage("neon-cfg-rev", CONFIG_REVISION);
+  return migrated;
 }
 
 export function normalizeProgress(value: unknown): Progress {
