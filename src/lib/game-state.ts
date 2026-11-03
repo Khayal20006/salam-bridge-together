@@ -110,13 +110,21 @@ export function saveProgress(value: Progress, uid: string | null): void {
   writeStorage(progressKey(uid), JSON.stringify(normalizeProgress(value)));
 }
 
-export function electHost(presence: Record<string, { at?: number }[]>): string | null {
+export function electHost(
+  presence: Record<string, { at?: number; visible?: boolean }[]>,
+): string | null {
   let host: string | null = null,
-    first = Infinity;
+    first = Infinity,
+    priority = Infinity;
   for (const [key, entries] of Object.entries(presence)) {
     const at = entries[0]?.at;
     if (typeof at !== "number" || !Number.isFinite(at) || at < 0) continue;
-    if (at < first || (at === first && (host === null || key < host))) {
+    const rank = entries[0]?.visible === false ? 1 : 0;
+    if (
+      rank < priority ||
+      (rank === priority && (at < first || (at === first && (host === null || key < host))))
+    ) {
+      priority = rank;
       first = at;
       host = key;
     }

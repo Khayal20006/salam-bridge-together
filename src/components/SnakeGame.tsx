@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import GameCanvas from "./GameCanvas";
+import { GAME_VERSION } from "@/game/version";
 import { supabase } from "@/integrations/supabase/client";
 import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
 import { lovable } from "@/integrations/lovable/index";
@@ -401,6 +402,7 @@ export default function SnakeGame() {
             persistRef.current(coinsRef.current + coinsFor(len), ownedRef.current, skinRef.current);
         }}
         onScore={setScore}
+        onInterrupted={() => setState("menu")}
         onCount={setOnline}
         onFps={setFps}
         onStatus={setConnectionStatus}
@@ -414,6 +416,7 @@ export default function SnakeGame() {
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/80 px-3 py-2 text-xs text-foreground">
         {connectionStatus === "online" ? "🟢" : "🟡"} Onlayn oyunçu:{" "}
         <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
+        <span className="ml-2 text-muted-foreground">Otaq: {room.toUpperCase()}</span>
         {connectionStatus !== "online" && (
           <span className="ml-2">
             {connectionStatus === "connecting" ? "Qoşulur..." : "Bağlantı bərpa olunur..."}
@@ -471,6 +474,7 @@ export default function SnakeGame() {
           <p className="mt-2 text-xs text-muted-foreground">
             Donursa: keyfiyyəti "Aşağı" et və effektləri söndür.
           </p>
+          <p className="mt-2 text-xs text-muted-foreground">Versiya: {GAME_VERSION}</p>
         </div>
       )}
       {state === "play" && (

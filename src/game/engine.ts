@@ -1,4 +1,5 @@
 import { BodyTrail, smoothTurn } from "./movement.ts";
+import { botGoal, botHeading, type BotMemory, type Obstacle } from "./bot-navigation.ts";
 
 export const WORLD = 3000;
 export const STEP_MS = 1000 / 30;
@@ -39,6 +40,7 @@ export type Point = { x: number; y: number };
 export type Food = Point & { id: number; r: number; hue: number; v: number };
 export type Snake = {
   id: string;
+  spawnTick?: number;
   name: string;
   pts: Point[];
   angle: number;
@@ -116,6 +118,7 @@ export class Arena {
   private foodId = 0;
   private inputs = new Map<string, number>();
   private trails = new Map<string, BodyTrail>();
+  private botMemory = new Map<string, BotMemory>();
   private random: () => number;
   constructor(random: () => number = Math.random, initialize = true) {
     this.random = random;
@@ -167,6 +170,7 @@ export class Arena {
       if (!safe) continue;
       const s: Snake = {
         id,
+        spawnTick: this.tick,
         name: name.slice(0, 14) || "Oyunçu",
         pts,
         angle,
@@ -193,6 +197,7 @@ export class Arena {
     this.snakes.delete(id);
     this.inputs.delete(id);
     this.trails.delete(id);
+    this.botMemory.delete(id);
   }
   input(id: string, value: Input): void {
     const s = this.snakes.get(id);
@@ -220,33 +225,32 @@ export class Arena {
     const previous = new Map<string, Point>();
     const foodGrid = new SpatialGrid<Food>(120);
     for (const f of this.foods.values()) foodGrid.insert(f.x, f.y, f.x, f.y, f);
+    const navigation = this.tick % 6 === 0 ? new SpatialGrid<Obstacle>(120) : undefined;
+    if (navigation) {
+      for (const s of this.snakes.values()) {
+        for (let i = 1; i < s.pts.length; i += 2) {
+          const a = s.pts[i - 1]!,
+            b = s.pts[Math.min(i + 1, s.pts.length - 1)]!;
+          const radius = snakeWidth(s);
+          navigation.insert(
+            Math.min(a.x, b.x) - radius,
+            Math.min(a.y, b.y) - radius,
+            Math.max(a.x, b.x) + radius,
+            Math.max(a.y, b.y) + radius,
+            { id: s.id, a, b, radius },
+          );
+        }
+      }
+    }
     for (const s of this.snakes.values()) {
       const head = s.pts[0]!;
       previous.set(s.id, { ...head });
-      if (s.bot && this.tick % 6 === 0) {
-        let nearest: Food | undefined,
-          distance = Infinity;
-        for (const f of foodGrid.query(head.x - 400, head.y - 400, head.x + 400, head.y + 400)) {
-          const d = (head.x - f.x) ** 2 + (head.y - f.y) ** 2;
-          if (d < distance) {
-            nearest = f;
-            distance = d;
-          }
-        }
-        if (nearest) s.target = Math.atan2(nearest.y - head.y, nearest.x - head.x);
-        for (const other of this.snakes.values()) {
-          if (s === other) continue;
-          const danger = other.pts.find(
-            (p, i) =>
-              i % 4 === 0 &&
-              (p.x - head.x) ** 2 + (p.y - head.y) ** 2 < (snakeWidth(other) + 90) ** 2,
-          );
-          if (danger) {
-            s.target = Math.atan2(head.y - danger.y, head.x - danger.x);
-            break;
-          }
-        }
-        if (Math.hypot(head.x, head.y) > WORLD - 300) s.target = Math.atan2(-head.y, -head.x);
+      if (s.bot && navigation) {
+        const nearbyFood = foodGrid.query(head.x - 450, head.y - 450, head.x + 450, head.y + 450);
+        const memory = botGoal(s, nearbyFood, this.foods, this.botMemory.get(s.id), this.tick);
+        this.botMemory.set(s.id, memory);
+        const obstacles = navigation.query(head.x - 200, head.y - 200, head.x + 200, head.y + 200);
+        s.target = botHeading(s, memory.goal, obstacles, WORLD);
       }
       s.boost = s.boost && s.len > 12;
       const speedPerSecond = s.boost ? BOOST_SPEED : BASE_SPEED;
@@ -416,6 +420,7 @@ export class Arena {
     this.foods.clear();
     this.inputs.clear();
     this.trails.clear();
+    this.botMemory.clear();
     for (const s of snapshot.snakes) {
       this.snakes.set(s.id, cloneSnake(s));
       this.trails.set(s.id, new BodyTrail(s.pts));

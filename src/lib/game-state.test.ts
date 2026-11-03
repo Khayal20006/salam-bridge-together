@@ -63,6 +63,12 @@ describe("saved game data", () => {
   });
 });
 describe("host election", () => {
+  it("hands authority to a visible peer and keeps deterministic ordering", () => {
+    const presence = { first: [{ at: 0, visible: false }], second: [{ at: 1, visible: true }] };
+    expect(electHost(presence)).toBe("second");
+    expect(electHost({ second: presence.second, first: presence.first })).toBe("second");
+    expect(electHost({ first: presence.first })).toBe("first");
+  });
   it("uses a deterministic tie break and ignores invalid timestamps", () => {
     expect(electHost({ b: [{ at: 10 }], a: [{ at: 10 }], bad: [{ at: NaN }] })).toBe("a");
     expect(electHost({ invalid: [{}] })).toBeNull();

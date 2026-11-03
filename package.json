@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:arena": "node scripts/test-arena.mjs",
+    "test:realtime": "node scripts/test-realtime-browser.mjs",
     "benchmark:arena": "node scripts/benchmark-arena.mjs",
     "test:watch": "vitest"
   },

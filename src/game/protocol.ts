@@ -1,10 +1,21 @@
 import { MAX_PLAYERS, BOT_COUNT, type Snapshot, type Snake, type Food } from "./engine.ts";
 
-export const PROTOCOL = 1;
-type PackedSnake = [string, string, string, number, number, number, boolean, boolean, number[]];
+export const PROTOCOL = 2;
+type PackedSnake = [
+  string,
+  string,
+  string,
+  number,
+  number,
+  number,
+  boolean,
+  boolean,
+  number[],
+  number,
+];
 type PackedFood = [number, number, number, number, number, number];
 export type WireSnapshot = {
-  v: 1;
+  v: 2;
   tick: number;
   base: number | null;
   snakes: PackedSnake[];
@@ -46,6 +57,7 @@ export function packSnapshot(
         s.bot,
         s.boost,
         points.flatMap((p) => [Math.round(p.x), Math.round(p.y)]),
+        s.spawnTick ?? 0,
       ];
     }),
     foods: current.foods
@@ -97,8 +109,8 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
     seen = new Set<string>();
   for (const s of snakes) {
     if (
-      !array(s, 9) ||
-      s.length !== 9 ||
+      !array(s, 10) ||
+      s.length !== 10 ||
       !id(s[0]) ||
       seen.has(s[0]) ||
       !text(s[1], 14) ||
@@ -110,6 +122,8 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
       !finite(s[5]) ||
       typeof s[6] !== "boolean" ||
       typeof s[7] !== "boolean" ||
+      !integer(s[9]) ||
+      s[9] > tick ||
       !array(s[8], 480) ||
       s[8].length < 2 ||
       s[8].length % 2
@@ -125,6 +139,7 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
     seen.add(s[0]);
     result.push({
       id: s[0],
+      spawnTick: s[9],
       name: s[1],
       skin: s[2],
       angle: s[3],

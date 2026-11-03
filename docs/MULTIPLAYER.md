@@ -31,8 +31,18 @@ Set `VITE_ARENA_URL=wss://YOUR-ARENA-HOST/arena` when building the frontend.
 
 Existing deployments without `VITE_ARENA_URL` use a compatibility Supabase Realtime
 transport. There is still a single elected simulator and shared world: other
-clients send inputs, not snake positions. Host migration copies the latest world.
-This fallback trusts the host browser and pauses if its connection is lost; it is
+clients send inputs, not snake positions. The simulator runs in a module Web Worker,
+away from canvas rendering. A visible peer takes priority over a hidden peer after
+presence settles. Host migration copies the latest world and preserves its ID;
+the former host stops its worker before another one starts. Reconnecting clients
+stop simulating and request a full frame. Missing packet baselines trigger a
+keyframe request, and a watchdog catches a silent stream. Outbound snapshots are
+bounded to one send and the latest pending frame. Unchanged steering uses a 5 Hz
+heartbeat; changing steering is capped at 20 Hz, and boost changes send immediately.
+The host renders the same quantized snapshots as its peers. No spectator creates
+an independent set of local bots.
+
+This fallback trusts the host browser and pauses briefly during migration; it is
 not equivalent to a trusted dedicated server. Competitive production should use
 the WebSocket server. Pushing the frontend alone does not provision that service.
 
@@ -48,6 +58,9 @@ The server publishes 10 snapshots/second. Coordinates are quantized to whole wor
 units; every body point is retained for visible snakes. Distant snakes send their
 head and metadata for the minimap and leaderboard. Food changes are deltas, with a
 full recovery keyframe each second. Missing baselines trigger a resync.
+Equal-tick keyframes are accepted because a join or leave can happen between two
+simulation steps. Each snake carries its spawn tick so a respawn is never
+interpolated as a body moving across the entire map from its previous life.
 Nearby food is attracted toward one nearest mouth by the authority. Movement is
 included in food deltas and rendered with the same interpolation timeline as snakes.
 
@@ -66,6 +79,27 @@ than building unbounded outbound queues.
 These choices trade a small, explicit interpolation delay for stable movement.
 They cannot eliminate Internet RTT, packet loss or a distant server. The actual
 network, room CPU time, frame time and bandwidth must be measured after deployment.
+
+## Bot movement
+
+Bots commit to a nearby food goal ahead of their head instead of switching to food
+behind the neck on each update. Every six simulation steps a spatial grid supplies
+nearby body segments. The bot scores short curved paths against those segments and
+the boundary, so a body behind it cannot repeatedly reverse its direction. A bot
+that makes little progress over three seconds temporarily chooses a distant goal.
+Bot decisions run only in the authority and use the shared collision engine.
+
+## Publishing the frontend
+
+A GitHub push synchronizes source into the Lovable editor. It does not prove that
+the custom domain has been republished. On 2026-11-03 the HTML served by
+`https://neonworm.app/` still identified source commit
+`b9ad74b40c010489b08af0dfa191d7a7fe4d7742`, while GitHub main contained newer code.
+Publish the updated project in Lovable and verify the served commit marker after
+publication. The graphics panel shows game version `2026.11.03.1`; the HUD shows
+the exact room ID to help two players verify their room and version. Reload old
+tabs after publishing a protocol update. Source push and live publication are
+separate verification steps.
 
 ## Running the arena service
 
@@ -112,3 +146,9 @@ performance guarantee.
 The optional Windows `node scripts/test-browser.mjs` smoke test requires Edge and
 `npm run dev` already running. It captures the menu and gameplay and checks for
 JavaScript exceptions. Set `EDGE_PATH` or `APP_URL` to change those defaults.
+
+`npm run test:realtime` also requires the Vite dev server and working public
+Supabase variables. It uses isolated, random test topics on the actual relay and
+two real Edge pages. It compares complete world snapshots, joins both players,
+backgrounds the host, drops a delta baseline, closes the host and checks continuity
+and browser exceptions. It never joins public game topics.

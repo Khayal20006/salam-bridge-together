@@ -12,6 +12,7 @@ type Props = {
   profile: () => { name: string; skin: string };
   onStart: () => void;
   onDeath: (length: number) => void;
+  onInterrupted: () => void;
   onScore: (score: number) => void;
   onCount: (count: number) => void;
   onFps: (fps: number) => void;
@@ -35,6 +36,7 @@ export default function GameCanvas(props: Props) {
     let raf = 0,
       disposed = false,
       self = "",
+      world = "",
       active = false,
       requested = false;
     let latest: Snapshot | undefined,
@@ -78,15 +80,17 @@ export default function GameCanvas(props: Props) {
       return sprite;
     });
     const connection = connectArena(props.room, {
-      snapshot(state, id) {
+      snapshot(state, id, nextWorld = "") {
         if (disposed) return;
-        if (self !== id) {
+        if (self !== id || world !== nextWorld) {
           self = id;
+          world = nextWorld;
           wasAlive = false;
           history.length = 0;
           rendered.clear();
         }
         latest = state;
+        if (history.at(-1)?.state.tick === state.tick) history.pop();
         history.push({
           state,
           at: performance.now(),
@@ -107,11 +111,12 @@ export default function GameCanvas(props: Props) {
           mouse.down = false;
           const death = [...state.deaths].reverse().find((d) => d.id === self);
           if (death) latestProps.current.onDeath(death.len);
+          else latestProps.current.onInterrupted();
         }
       },
       status(status) {
         if (!disposed) {
-          if (status !== "online") requested = false;
+          if (status === "offline") requested = false;
           latestProps.current.onStatus(status);
         }
       },
@@ -214,13 +219,15 @@ export default function GameCanvas(props: Props) {
       const all: Snake[] = [];
       for (const target of b?.state.snakes ?? []) {
         if (!currentIds.has(target.id)) continue; // Do not render an already dead body from the buffer.
-        const source = old.get(target.id) ?? target;
+        const previous = old.get(target.id);
+        const source = previous && previous.spawnTick === target.spawnTick ? previous : target;
         let shown = rendered.get(target.id);
         if (!shown) {
           shown = cloneSnake(target);
           rendered.set(target.id, shown);
         }
         shown.len = target.len;
+        shown.spawnTick = target.spawnTick ?? 0;
         shown.boost = target.boost;
         shown.skin = target.skin;
         shown.name = target.name;
