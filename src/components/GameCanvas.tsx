@@ -17,6 +17,7 @@ import { LocalPrediction } from "@/game/prediction";
 import { SnapshotPlayback } from "@/game/playback";
 import { drawSnakeSurface } from "@/game/snake-surface";
 import { SmoothCamera } from "@/game/camera";
+import { nextPaintTime } from "@/game/frame-clock";
 
 type Props = {
   room: string;
@@ -61,6 +62,7 @@ export default function GameCanvas(props: Props) {
       lastHud = 0,
       lastInput = 0;
     let lastFrame = performance.now(),
+      nextPaint = lastFrame,
       leaders: Snake[] = [],
       leadersAt = -Infinity;
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
@@ -227,6 +229,7 @@ export default function GameCanvas(props: Props) {
       if (document.hidden) up();
       else {
         lastFrame = performance.now();
+        nextPaint = lastFrame;
         lastInput = 0;
         const last = history.at(-1);
         history.length = 0;
@@ -257,8 +260,9 @@ export default function GameCanvas(props: Props) {
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       sendInput();
-      // Phones with 120 Hz panels do not need two full world paints per frame.
-      if (now - lastFrame < 15) return;
+      const paintAt = nextPaintTime(now, nextPaint);
+      if (paintAt === null) return;
+      nextPaint = paintAt;
       const elapsed = now - lastFrame;
       lastFrame = now;
       const cfg = latestProps.current.config,
