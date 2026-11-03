@@ -334,7 +334,6 @@ export class Arena {
       }
     }
     const snakes = [...this.snakes.values()];
-    const headDefeats = new Map<string, Set<string>>();
     for (let i = 0; i < snakes.length; i++) {
       const s = snakes[i]!,
         head = s.pts[0]!,
@@ -356,19 +355,8 @@ export class Arena {
           pointSegmentDistanceSquared(this.origin, this.relativeStart, this.relativeEnd) <
           (radius + widths.get(other.id)! * COLLISION_SCALE) ** 2
         ) {
-          const difference = s.len - other.len;
-          const winner =
-            difference > 0.000001 || (Math.abs(difference) <= 0.000001 && s.id < other.id)
-              ? s
-              : other;
-          const loser = winner === s ? other : s;
-          dead.add(loser.id);
-          let defeated = headDefeats.get(winner.id);
-          if (!defeated) {
-            defeated = new Set();
-            headDefeats.set(winner.id, defeated);
-          }
-          defeated.add(loser.id);
+          dead.add(s.id);
+          dead.add(other.id);
         }
       }
     }
@@ -386,7 +374,6 @@ export class Arena {
       )) {
         if (
           body.id !== s.id &&
-          !headDefeats.get(s.id)?.has(body.id) &&
           segmentsDistanceSquared(old, head, body.a, body.b) < (radius + body.radius) ** 2
         ) {
           dead.add(s.id);

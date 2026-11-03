@@ -230,19 +230,19 @@ describe("authoritative arena", () => {
       }
     }
   });
-  it("selects one head-on survivor in the same tick, regardless of insertion order", () => {
+  it("kills both snakes in a head-on collision regardless of insertion order", () => {
     function run(reverse: boolean) {
       const arena = new Arena(random(), false);
       const pair = [snake("a", -9, 0), snake("b", 9, 0, Math.PI)];
       for (const s of reverse ? pair.reverse() : pair) arena.snakes.set(s.id, s);
       arena.step();
-      expect([...arena.snakes.keys()]).toEqual(["a"]);
-      expect(arena.deaths.map((d) => d.id)).toEqual(["b"]);
-      return arena.deaths.sort((a, b) => a.id.localeCompare(b.id));
+      expect([...arena.snakes.keys()]).toEqual([]);
+      expect(arena.deaths.map((d) => d.id).sort()).toEqual(["a", "b"]);
     }
-    expect(run(false)).toEqual(run(true));
+    run(false);
+    run(true);
   });
-  it("lets the larger snake win head-on without being killed again by the defeated snake's neck", () => {
+  it("kills both snakes head-on even when their lengths differ", () => {
     for (const reverse of [false, true]) {
       const arena = new Arena(random(), false);
       const a = snake("a", -9, 0),
@@ -250,11 +250,11 @@ describe("authoritative arena", () => {
       b.len = 40;
       for (const s of reverse ? [b, a] : [a, b]) arena.snakes.set(s.id, s);
       arena.step();
-      expect([...arena.snakes.keys()]).toEqual(["b"]);
-      expect(arena.deaths.map((d) => d.id)).toEqual(["a"]);
+      expect([...arena.snakes.keys()]).toEqual([]);
+      expect(arena.deaths.map((d) => d.id).sort()).toEqual(["a", "b"]);
     }
   });
-  it("still checks the head-on winner against unrelated bodies", () => {
+  it("does not kill an unrelated snake during a head-on collision", () => {
     const arena = new Arena(random(), false);
     const a = snake("a", -9, 0),
       b = snake("b", 9, 0, Math.PI);
@@ -263,7 +263,8 @@ describe("authoritative arena", () => {
     wall.pts = Array.from({ length: 26 }, (_, i) => ({ x: 20, y: -100 + i * 8 }));
     for (const s of [a, b, wall]) arena.snakes.set(s.id, s);
     arena.step();
-    expect(arena.deaths.some((d) => d.id === "b")).toBe(true);
+    expect([...arena.snakes.keys()]).toEqual(["wall"]);
+    expect(arena.deaths.map((d) => d.id).sort()).toEqual(["a", "b"]);
   });
   it("detects the swept head path crossing a body, even when endpoints miss", () => {
     expect(
