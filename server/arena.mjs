@@ -115,7 +115,7 @@ server.on("upgrade", (req, socket, head) => {
   const match = /^\/arena\/(eu-[1-4]|as-[1-2]|am-[1-2])$/.exec(
     new URL(req.url || "/", "http://arena.local").pathname,
   );
-  if (!match || (req.headers.origin && !origins.has(req.headers.origin))) {
+  if (!match || !allowedOrigin(req.headers.origin)) {
     socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     return;
   }
