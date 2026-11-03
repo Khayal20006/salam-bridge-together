@@ -77,7 +77,8 @@ export default function GameCanvas(props: Props) {
       const y = innerHeight / 2 + ((head?.y ?? cam.y) - cam.y) * cam.z;
       const dx = mouse.x - x,
         dy = mouse.y - y;
-      return dx * dx + dy * dy < 64 ? (snake?.angle ?? 0) : Math.atan2(dy, dx);
+      const deadzone = snake ? snakeWidth(snake) * cam.z + 6 : 12;
+      return dx * dx + dy * dy < deadzone * deadzone ? (snake?.angle ?? 0) : Math.atan2(dy, dx);
     };
     const labels = new Map<string, HTMLCanvasElement>();
     const bg =
@@ -381,7 +382,11 @@ export default function GameCanvas(props: Props) {
           points = [];
           spines.set(s.id, points);
         }
-        smoothSpine(s.pts, points, divisions);
+        smoothSpine(s.pts, points, divisions, s.angle);
+        const facing =
+          points.length > 1
+            ? Math.atan2(points[0]!.y - points[1]!.y, points[0]!.x - points[1]!.x)
+            : s.angle;
         path(points);
         if (s.boost && cfg.boostFx) {
           ctx.strokeStyle = `${first}44`;
@@ -448,8 +453,8 @@ export default function GameCanvas(props: Props) {
           }
         }
         for (const side of [-1, 1]) {
-          const x = head.x + Math.cos(s.angle + side * 0.6) * radius * 0.65,
-            y = head.y + Math.sin(s.angle + side * 0.6) * radius * 0.65;
+          const x = head.x + Math.cos(facing + side * 0.6) * radius * 0.65,
+            y = head.y + Math.sin(facing + side * 0.6) * radius * 0.65;
           ctx.fillStyle = "#fff";
           ctx.beginPath();
           ctx.arc(x, y, radius * 0.38, 0, Math.PI * 2);
@@ -457,8 +462,8 @@ export default function GameCanvas(props: Props) {
           ctx.fillStyle = skin.eye ?? "#111";
           ctx.beginPath();
           ctx.arc(
-            x + Math.cos(s.angle) * radius * 0.14,
-            y + Math.sin(s.angle) * radius * 0.14,
+            x + Math.cos(facing) * radius * 0.14,
+            y + Math.sin(facing) * radius * 0.14,
             radius * 0.2,
             0,
             Math.PI * 2,

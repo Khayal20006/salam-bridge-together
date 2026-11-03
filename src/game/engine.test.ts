@@ -241,13 +241,19 @@ describe("authoritative arena", () => {
   it("caps body detail as length increases", () => {
     expect(segmentCount(10)).toBe(10);
     expect(segmentCount(1_000_000)).toBe(240);
-    expect(snakeWidth({ len: 1_000_000 })).toBe(18);
   });
-  it("grows in length with only gradual, bounded thickening", () => {
+  it("grows in length with only gradual thickening", () => {
     expect(segmentCount(10.3) - segmentCount(10)).toBeLessThanOrEqual(1);
     expect(segmentCount(13) - segmentCount(10)).toBeLessThanOrEqual(5);
     expect(snakeWidth({ len: 13 })).toBeGreaterThan(snakeWidth({ len: 10 }));
     expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.4);
+  });
+  it("keeps thickening past the old radius limit without making large meals cause a width jump", () => {
+    const widths = [10, 50, 100, 170, 200, 500, 1_000, 10_000].map((len) => snakeWidth({ len }));
+    for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThan(widths[i - 1]!);
+    expect(snakeWidth({ len: 200 })).toBeGreaterThan(18);
+    expect(snakeWidth({ len: 200.75 }) - snakeWidth({ len: 200 })).toBeLessThan(0.02);
+    expect(snakeWidth({ len: 10_000 })).toBeLessThan(40);
   });
   it("makes repeated normal meals visibly extend the body and gently increase thickness", () => {
     const arena = new Arena(random(), false),

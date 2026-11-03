@@ -54,3 +54,10 @@ dayanma və quyruğun yana sıçraması üçün regresiya testləri əlavə edil
 kənar təmas üçün toqquşma radiusu 80%-ə endirildi; normal yem 0,75 uzunluq verir.
 Tab keçidində dayanmama, hostun checkpoint ilə ötürülməsi və səhifəni yeniləyən
 oyunçunun eyni dünyaya qoşulması real Supabase bağlantısında yoxlanır.
+
+2026.11.03.6: əvvəlki radius-18 dayanacağı götürüldü; eyni loqarifmik əyri ilə
+qalınlaşma davam edir. Baş-boyun əyrisinin başlanğıcı istiqamətə uyğunlaşdırıldı,
+gözlər görünən boyunla yönəlir. 70 test, TypeScript, ESLint, build, real WebSocket
+və brauzer smoke sınağı keçdi. Yuxarıdakı sabit qalınlıq həddi və köhnə versiya
+qeydləri tarixi nəticələrdir. Son canlı yoxlamada neonworm.app hələ .3 idi;
+GitHub yenilənməsi Lovable-da Publish → Update əməliyyatını əvəz etmir.

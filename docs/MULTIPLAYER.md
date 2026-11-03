@@ -237,3 +237,18 @@ current width. This follows the latest request to put more growth into thickness
 A five-second local browser sample after the packet-time fix recorded 300 frames,
 zero stationary movement frames, and a 16.7 ms p95 frame interval. This is a local
 measurement, not a guarantee about Internet packet delivery or all devices.
+
+Version 2026.11.03.6 removes the hard radius-18 stop from the same logarithmic
+width curve. Early growth is identical to .5; thickness continues gradually at
+larger scores. A regression checks continued growth beyond the old limit and a
+small width change for a normal meal. Physical body detail remains capped at
+240 points to bound simulation and packet cost.
+
+The rendered first interval now uses a Hermite tangent aligned with the head's
+heading, joining the existing Catmull-Rom body at the same end tangent. Eyes
+follow that rendered neck direction. The pointer dead zone scales with the
+visible head radius. Neither change changes bot authority or packet size.
+70 unit tests, typecheck, lint, production build, the real WebSocket integration
+test and a native browser smoke test passed. The 600-tick local benchmark with
+49.1 average humans and 18 bots measured p95 3.58 ms and maximum 6.39 ms against
+the 33.33 ms simulation budget; this is not a production network load test.

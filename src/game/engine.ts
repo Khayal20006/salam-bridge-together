@@ -59,7 +59,7 @@ export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
 export const snakeWidth = (s: Pick<Snake, "len">) =>
-  11 + Math.min(7, Math.log2(1 + Math.max(0, s.len - 10) / 40) * 3);
+  11 + Math.log2(1 + Math.max(0, s.len - 10) / 40) * 3;
 export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
   s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>

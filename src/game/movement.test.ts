@@ -9,6 +9,20 @@ import {
 } from "./movement";
 
 describe("fluid snake movement", () => {
+  it("joins the face and neck on a shared tangent when the head changes direction", () => {
+    const body = [
+      { x: 0, y: 0 },
+      { x: -8, y: 0 },
+      { x: -16, y: 0 },
+      { x: -24, y: 0 },
+    ];
+    const points: { x: number; y: number }[] = [];
+    smoothSpine(body, points, 32, 0.6);
+    const direction = Math.atan2(points[0]!.y - points[1]!.y, points[0]!.x - points[1]!.x);
+    expect(Math.abs(angleDelta(direction, 0.6))).toBeLessThan(0.05);
+    expect(points[32]).toEqual(body[1]);
+    expect(points.at(-1)).toEqual(body.at(-1));
+  });
   it("draws four times as many spine intervals without changing the network body", () => {
     const points = Array.from({ length: 10 }, (_, i) => ({ x: i * 8, y: Math.sin(i / 3) * 8 }));
     const saved = structuredClone(points),

@@ -7,7 +7,12 @@ export const interpolateAngle = (from: number, to: number, alpha: number) =>
   from + angleDelta(from, to) * alpha;
 
 /** Dense visual spine; authority/collision points and packet sizes stay unchanged. */
-export function smoothSpine(points: Point[], output: Point[], divisions = 4): Point[] {
+export function smoothSpine(
+  points: Point[],
+  output: Point[],
+  divisions = 4,
+  headAngle?: number,
+): Point[] {
   if (points.length < 2) {
     output.length = 0;
     return output;
@@ -32,7 +37,18 @@ export function smoothSpine(points: Point[], output: Point[], divisions = 4): Po
         bb = (3 * t3 - 5 * t2 + 2) * 0.5,
         cc = (-3 * t3 + 4 * t2 + t) * 0.5,
         dd = (t3 - t2) * 0.5;
-      write(a.x * aa + b.x * bb + c.x * cc + d.x * dd, a.y * aa + b.y * bb + c.y * cc + d.y * dd);
+      if (i === 0 && headAngle !== undefined) {
+        const distance = Math.hypot(c.x - b.x, c.y - b.y);
+        const h00 = 2 * t3 - 3 * t2 + 1,
+          h10 = t3 - 2 * t2 + t,
+          h01 = -2 * t3 + 3 * t2,
+          h11 = t3 - t2;
+        write(
+          h00 * b.x - h10 * Math.cos(headAngle) * distance + h01 * c.x + h11 * (d.x - b.x) * 0.5,
+          h00 * b.y - h10 * Math.sin(headAngle) * distance + h01 * c.y + h11 * (d.y - b.y) * 0.5,
+        );
+      } else
+        write(a.x * aa + b.x * bb + c.x * cc + d.x * dd, a.y * aa + b.y * bb + c.y * cc + d.y * dd);
     }
   }
   const tail = points.at(-1)!;
