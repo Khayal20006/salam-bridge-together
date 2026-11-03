@@ -182,7 +182,7 @@ export class RealtimeConnection implements ArenaConnection {
       return;
     }
     // Give the host exactly the same quantized state as its peers, not a separate local world.
-    this.accept(unpackSnapshot(packSnapshot(event.snapshot))!);
+    this.accept(unpackSnapshot(packSnapshot(event.snapshot, this.current), this.current)!);
     this.queued = {
       snapshot: event.snapshot,
       full: event.full || this.forceFull || (this.queued?.full ?? false),

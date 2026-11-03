@@ -12,6 +12,7 @@ import {
   type Snapshot,
 } from "@/game/engine";
 import { interpolateAngle, traceBodyCurve } from "@/game/movement";
+import { snapshotIndex } from "@/game/snapshot-index";
 
 type Props = {
   room: string;
@@ -58,8 +59,10 @@ export default function GameCanvas(props: Props) {
       state: Snapshot;
       at: number;
       foods: Map<number, Snapshot["foods"][number]>;
+      snakes: Map<string, Snake>;
     }[] = [];
     const rendered = new Map<string, Snake>();
+    const all: Snake[] = [];
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = { x: 0, y: 0, z: 0.8 };
     const steeringAngle = () => {
@@ -102,7 +105,8 @@ export default function GameCanvas(props: Props) {
         history.push({
           state,
           at: performance.now(),
-          foods: new Map(state.foods.map((f) => [f.id, f])),
+          foods: snapshotIndex(state).foods,
+          snakes: snapshotIndex(state).snakes,
         });
         if (history.length > 8) history.shift();
         const me = state.snakes.find((s) => s.id === self);
@@ -222,12 +226,12 @@ export default function GameCanvas(props: Props) {
       }
       const alpha =
         a && b && b.at > a.at ? Math.max(0, Math.min(1, (renderAt - a.at) / (b.at - a.at))) : 1;
-      const old = new Map(a?.state.snakes.map((s) => [s.id, s]));
-      const currentIds = new Set(latest?.snakes.map((s) => s.id));
-      const all: Snake[] = [];
+      const old = a?.snakes;
+      const currentIds = latest ? snapshotIndex(latest).snakes : undefined;
+      let visibleCount = 0;
       for (const target of b?.state.snakes ?? []) {
-        if (!currentIds.has(target.id)) continue; // Do not render an already dead body from the buffer.
-        const previous = old.get(target.id);
+        if (!currentIds?.has(target.id)) continue; // Do not render an already dead body from the buffer.
+        const previous = old?.get(target.id);
         const source = previous && previous.spawnTick === target.spawnTick ? previous : target;
         let shown = rendered.get(target.id);
         if (!shown) {
@@ -251,9 +255,10 @@ export default function GameCanvas(props: Props) {
           r.x = p.x + (t.x - p.x) * alpha;
           r.y = p.y + (t.y - p.y) * alpha;
         }
-        all.push(shown);
+        all[visibleCount++] = shown;
       }
-      for (const key of rendered.keys()) if (!currentIds.has(key)) rendered.delete(key);
+      all.length = visibleCount;
+      for (const key of rendered.keys()) if (!currentIds?.has(key)) rendered.delete(key);
       const me = all.find((s) => s.id === self);
       if (me) {
         const head = me.pts[0]!,

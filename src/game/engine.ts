@@ -122,6 +122,7 @@ export class Arena {
   private inputs = new Map<string, number>();
   private trails = new Map<string, BodyTrail>();
   private botMemory = new Map<string, BotMemory>();
+  private foodSnapshots = new WeakMap<Food, Food>();
   private random: () => number;
   constructor(random: () => number = Math.random, initialize = true) {
     this.random = random;
@@ -413,10 +414,29 @@ export class Arena {
     if (this.tick % 15 === 0) this.ensureBots();
   }
   snapshot(): Snapshot {
+    const foods: Food[] = [];
+    for (const food of this.foods.values()) {
+      let saved = this.foodSnapshots.get(food);
+      if (
+        !saved ||
+        saved.x !== food.x ||
+        saved.y !== food.y ||
+        saved.r !== food.r ||
+        saved.hue !== food.hue ||
+        saved.v !== food.v ||
+        saved.id !== food.id
+      ) {
+        saved = { ...food };
+        this.foodSnapshots.set(food, saved);
+      }
+      foods.push(saved);
+    }
     return {
       tick: this.tick,
-      snakes: [...this.snakes.values()].map(cloneSnake),
-      foods: [...this.foods.values()].map((f) => ({ ...f })),
+      // Movement replaces pts with a fresh travelled path; it never edits an old path.
+      // Copy mutable metadata, while retaining the immutable path for older frames.
+      snakes: [...this.snakes.values()].map((s) => ({ ...s })),
+      foods,
       deaths: this.deaths.map((d) => ({ ...d })),
     };
   }
@@ -427,6 +447,7 @@ export class Arena {
     this.inputs.clear();
     this.trails.clear();
     this.botMemory.clear();
+    this.foodSnapshots = new WeakMap();
     for (const s of snapshot.snakes) {
       this.snakes.set(s.id, cloneSnake(s));
       this.trails.set(s.id, new BodyTrail(s.pts));

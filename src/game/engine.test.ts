@@ -254,6 +254,35 @@ describe("authoritative arena", () => {
 });
 
 describe("replication protocol", () => {
+  it("keeps retained frames unchanged while sharing stable paths and food", () => {
+    const arena = new Arena(random());
+    const first = arena.snapshot();
+    const saved = structuredClone(first);
+    const again = arena.snapshot();
+    expect(again.snakes[0]!.pts).toBe(first.snakes[0]!.pts);
+    expect(again.foods[0]).toBe(first.foods[0]);
+    const liveFood = arena.foods.get(first.foods[0]!.id)!;
+    liveFood.x += 10;
+    const changed = arena.snapshot();
+    expect(changed.foods[0]).not.toBe(first.foods[0]);
+    for (let i = 0; i < 60; i++) arena.step();
+    expect(first).toEqual(saved);
+    expect(arena.snapshot().snakes[0]!.pts).not.toBe(first.snakes[0]!.pts);
+  });
+  it("reuses unchanged food through keyframes without mutating earlier deltas", () => {
+    const arena = new Arena(random());
+    const source = arena.snapshot();
+    const first = unpackSnapshot(packSnapshot(source))!;
+    const saved = structuredClone(first);
+    const keyframe = unpackSnapshot(packSnapshot(source), first)!;
+    expect(keyframe.foods[0]).toBe(first.foods[0]);
+    const food = arena.foods.get(first.foods[0]!.id)!;
+    food.x += 12;
+    arena.tick++;
+    const next = unpackSnapshot(packSnapshot(arena.snapshot(), source), first)!;
+    expect(next.foods.find((f) => f.id === food.id)).not.toBe(first.foods[0]);
+    expect(first).toEqual(saved);
+  });
   it("replicates food movement in deltas to both clients", () => {
     const arena = new Arena(random()),
       before = arena.snapshot();

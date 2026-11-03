@@ -29,7 +29,14 @@ böyümənin azaldılması və yalnız uzunluğa təsiri.
 | Ayrılmış və regional oyun serverləri işləsin                            | Canlıda təsdiqlənməyib          | Node WebSocket serveri hazırlanıb, lokal yoxlanıb. Ayrı xidmətin yayımlanması və VITE_ARENA_URL konfiqurasiyası lazımdır. Region adları həqiqi coğrafi server yerləşdirilməsi deyil.                                                                                         |
 | Heç bir bug və sıfır gecikmə olsun                                      | Təsdiqlənməyib                  | Aşkarlanan xətalar konkret testlərlə yoxlanır. Bütün mümkün xətaların yoxluğu və internetdə sıfır gecikmə zəmanəti verilmir.                                                                                                                                                 |
 
-56 avtomatik test, TypeScript, ESLint, production build, real WebSocket və real
+59 avtomatik test, TypeScript, ESLint, production build, real WebSocket və real
 Supabase brauzer sınaqları keçirilib. Brauzer ehtiyat rejimi etibarlı ayrılmış
 serverin təhlükəsizlik zəmanətlərini vermir. Logo və bütün skinlərin vizual
 keyfiyyətinin insan tərəfindən tam qiymətləndirilməsi ayrıca açıq qalır.
+
+Son yenilik: canlı sayt 70becd2 commit-i və 2026.11.03.2 versiyası ilə real brauzerdə
+açılıb, oyuna qoşulma və doğulma qorumasının görüntüsü yoxlanıb. Yuxarıdakı b9ad74b
+barədə qeyd əvvəlki yoxlamanın nəticəsidir. 2026.11.03.3 yaddaş optimallaşdırması
+ayrıca yayımlanmalıdır. Eyni kadr üçün indekslər təkrar qurulmur, dəyişməyən yem
+obyektləri və dəyişməz bədən yolları paylaşılır. Əvvəlki kadrların pozulmadığı üçün
+yeni testlər var. Ölçmələr docs/MULTIPLAYER.md-də qeyd edilib.

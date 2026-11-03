@@ -102,7 +102,7 @@ the custom domain has been republished. On 2026-11-03 the HTML served by
 `https://neonworm.app/` still identified source commit
 `b9ad74b40c010489b08af0dfa191d7a7fe4d7742`, while GitHub main contained newer code.
 Publish the updated project in Lovable and verify the served commit marker after
-publication. The graphics panel shows game version `2026.11.03.2`; the HUD shows
+publication. The graphics panel shows game version `2026.11.03.3`; the HUD shows
 the exact room ID to help two players verify their room and version. Reload old
 tabs after publishing a protocol update. Source push and live publication are
 separate verification steps.
@@ -158,3 +158,25 @@ Supabase variables. It uses isolated, random test topics on the actual relay and
 two real Edge pages. It compares complete world snapshots, joins both players,
 backgrounds the host, drops a delta baseline, closes the host and checks continuity
 and browser exceptions. It never joins public game topics.
+
+## Allocation control
+
+Snapshots copy mutable snake metadata and retain body paths: movement replaces a
+path rather than editing one retained by an older frame. Unchanged food snapshot
+objects are reused; moved food gets a new object so old interpolation frames stay
+intact. Treat snapshots and their contents as read-only. Restore still copies
+incoming state before the authority starts mutating it.
+
+Weakly cached indexes are shared by the renderer, packet decoder and all recipients
+of a snapshot. They expire with that snapshot. The renderer no longer builds new
+snake maps and ID sets every animation frame. Packet encoding fills a flat number
+array directly instead of allocating a temporary pair for every body point.
+The browser host also decodes food deltas rather than a full food keyframe on every
+local publication. Authority, tick rate and wire protocol are unchanged.
+
+`npm run benchmark:replication` measures 100 publications to 50 recipients, including
+allocation sampling and garbage collection. On the same seeded local workload,
+sampled allocation fell from 1962.14 MB to 1088.05 MB, publication p95 from 33.49 ms
+to 19.89 ms, and maximum observed GC from 8.94 ms to 2.54 ms. Encoded traffic was
+identical at 71,847,389 bytes. These are individual local measurements with profiler
+overhead, not proof of the cause of every browser freeze or a production FPS guarantee.

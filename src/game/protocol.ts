@@ -1,4 +1,5 @@
 import { MAX_PLAYERS, BOT_COUNT, type Snapshot, type Snake, type Food } from "./engine.ts";
+import { snapshotIndex } from "./snapshot-index.ts";
 
 export const PROTOCOL = 2;
 type PackedSnake = [
@@ -30,8 +31,25 @@ export function packSnapshot(
   view?: { id: string; radius: number },
 ): WireSnapshot {
   const full = !previous || current.tick % 30 === 0;
-  const oldFoods = new Map(previous?.foods.map((f) => [f.id, f]));
-  const currentIds = new Set(current.foods.map((f) => f.id));
+  const oldFoods = previous ? snapshotIndex(previous).foods : undefined;
+  const currentFoods = snapshotIndex(current).foods;
+  const foods: PackedFood[] = [];
+  for (const f of current.foods) {
+    const old = oldFoods?.get(f.id);
+    if (
+      full ||
+      !old ||
+      Math.round(old.x) !== Math.round(f.x) ||
+      Math.round(old.y) !== Math.round(f.y) ||
+      old.r !== f.r ||
+      old.hue !== f.hue ||
+      old.v !== f.v
+    )
+      foods.push([f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]);
+  }
+  const removed: number[] = [];
+  if (!full && oldFoods)
+    for (const id of oldFoods.keys()) if (!currentFoods.has(id)) removed.push(id);
   const focus = view && current.snakes.find((s) => s.id === view.id)?.pts[0];
   return {
     v: PROTOCOL,
@@ -46,7 +64,12 @@ export function packSnapshot(
         s.pts.some(
           (p) => Math.abs(p.x - focus.x) < view.radius && Math.abs(p.y - focus.y) < view.radius,
         );
-      const points = visible ? s.pts : s.pts.slice(0, 1);
+      const count = visible ? s.pts.length : 1;
+      const points = new Array<number>(count * 2);
+      for (let i = 0; i < count; i++) {
+        points[i * 2] = Math.round(s.pts[i]!.x);
+        points[i * 2 + 1] = Math.round(s.pts[i]!.y);
+      }
       return [
         s.id,
         s.name,
@@ -56,25 +79,12 @@ export function packSnapshot(
         Math.round(s.hue),
         s.bot,
         s.boost,
-        points.flatMap((p) => [Math.round(p.x), Math.round(p.y)]),
+        points,
         s.spawnTick ?? 0,
       ];
     }),
-    foods: current.foods
-      .filter((f) => {
-        const old = oldFoods.get(f.id);
-        return (
-          full ||
-          !old ||
-          Math.round(old.x) !== Math.round(f.x) ||
-          Math.round(old.y) !== Math.round(f.y) ||
-          old.r !== f.r ||
-          old.hue !== f.hue ||
-          old.v !== f.v
-        );
-      })
-      .map((f): PackedFood => [f.id, Math.round(f.x), Math.round(f.y), f.r, f.hue, f.v]),
-    removed: full ? [] : [...oldFoods.keys()].filter((id) => !currentIds.has(id)),
+    foods,
+    removed,
     deaths: current.deaths.map((d) => [d.id, d.len, d.tick]),
   };
 }
@@ -151,9 +161,8 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
       pts,
     });
   }
-  const nextFoods = new Map<number, Food>(
-    base === null ? [] : previous?.foods.map((f) => [f.id, f]),
-  );
+  const oldFoods = previous ? snapshotIndex(previous).foods : undefined;
+  const nextFoods = new Map<number, Food>(base === null ? undefined : oldFoods);
   for (const key of removed) {
     if (!integer(key)) return null;
     nextFoods.delete(key);
@@ -177,7 +186,18 @@ export function unpackSnapshot(value: unknown, previous?: Snapshot): Snapshot | 
       f[5] > 100
     )
       return null;
-    nextFoods.set(f[0], { id: f[0], x: f[1], y: f[2], r: f[3], hue: f[4], v: f[5] });
+    const old = oldFoods?.get(f[0]);
+    nextFoods.set(
+      f[0],
+      old &&
+        old.x === f[1] &&
+        old.y === f[2] &&
+        old.r === f[3] &&
+        old.hue === f[4] &&
+        old.v === f[5]
+        ? old
+        : { id: f[0], x: f[1], y: f[2], r: f[3], hue: f[4], v: f[5] },
+    );
   }
   if (nextFoods.size > 1800) return null;
   const nextDeaths: Snapshot["deaths"] = [];
