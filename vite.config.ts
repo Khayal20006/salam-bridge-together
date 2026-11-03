@@ -6,6 +6,8 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import httpProxy from "http-proxy";
 import { defineConfig, type Plugin } from "vite";
+console.log("[arena-bridge] config module loaded");
+
 
 // The sandbox config wrapper drops `server.proxy`, so the arena socket is bridged
 // by a plugin instead: upgrades on /arena/<room> are handed to the arena process.
