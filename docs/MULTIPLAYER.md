@@ -16,7 +16,7 @@ order cannot decide the winner. A spatial grid limits body and food queries.
 
 New snakes must have clearance along their entire body. If a safe location cannot
 be found, spawning is rejected rather than placing a snake inside another one.
-Body detail is capped at 240 points. Normal food now adds 0.6 length, following
+Body detail is capped at 240 points. Normal food now adds 0.75 length, following
 the updated request for more visible growth. Body radius increases gently from
 11 to at most 18 world units as length grows; collision and bot navigation use
 that same radius.
@@ -24,9 +24,9 @@ Every newborn has 45 simulation steps (1500 ms) of protection against other
 snakes. Its body cannot kill another player during protection. The world boundary
 still kills, and repeated join messages cannot extend protection. All peers derive
 the shield from the replicated spawn tick; a pale ring marks it on the head.
-After protection expires, head and body contact use the full visible 11-unit head
-radius (including gradual growth), preventing visible grazing hits from passing
-through a smaller hitbox.
+After protection expires, head/body collision radii are 80% of their visible size,
+including gradual growth. This forgives light edge grazes while deeper overlap
+still kills. The world boundary uses the full visible radius.
 
 ## Transports
 
@@ -105,7 +105,7 @@ the custom domain has been republished. On 2026-11-03 the HTML served by
 `https://neonworm.app/` still identified source commit
 `b9ad74b40c010489b08af0dfa191d7a7fe4d7742`, while GitHub main contained newer code.
 Publish the updated project in Lovable and verify the served commit marker after
-publication. The graphics panel shows game version `2026.11.03.4`; the HUD shows
+publication. The graphics panel shows game version `2026.11.03.5`; the HUD shows
 the exact room ID to help two players verify their room and version. Reload old
 tabs after publishing a protocol update. Source push and live publication are
 separate verification steps.
@@ -205,3 +205,35 @@ This improves local response without extra input traffic. It cannot remove relay
 RTT, host-tab suspension, or provide a persistent trusted server. With only Lovable
 hosting, the compatibility host is still a browser. Deploy `server/arena.mjs` and
 set `VITE_ARENA_URL` for an independently hosted authoritative service.
+
+## Dense bodies and page lifecycle
+
+Drawing resamples each body interval into four Catmull-Rom intervals (two on low
+quality), using pooled points. A fresh ten-point body therefore draws 37 spine
+points. Authoritative spacing, collision points and packet sizes are unchanged.
+Color-band spacing is scaled with render density, and wholly offscreen bodies
+are culled before resampling.
+
+Prediction advances to packet arrival before rebasing, preserving time between
+the previous paint and the packet. Regression tests reproduce the former zero-
+movement frame and the tail kick on a turning head. Corrections are bounded in
+speed and tracked per body point, rather than translating the entire tail by
+the head error.
+
+Brief visibility changes keep the existing authority alive; sustained changes
+use a full checkpoint handoff before the new worker starts. Older peers retain
+the compatible election path. Pagehide explicitly leaves the realtime channel.
+Returning to a tab requests a full state, rebases frame history and camera, and
+releases stale boost. A back/forward-cache restore reloads the closed connection.
+The real relay browser test now covers brief switching, sustained backgrounding,
+refreshing the host, rejoining the advancing world, and absence of the old peer.
+
+Growth balance for 2026.11.03.5: food still adds 0.75 progress, but the body-point
+growth slope is 1.1 rather than 1.4 (about 21% less extension). Width now grows
+more noticeably using a logarithmic curve with a 40-point scale and coefficient
+3, still capped at radius 18. The collision tolerance is applied to that same
+current width. This follows the latest request to put more growth into thickness.
+
+A five-second local browser sample after the packet-time fix recorded 300 frames,
+zero stationary movement frames, and a 16.7 ms p95 frame interval. This is a local
+measurement, not a guarantee about Internet packet delivery or all devices.

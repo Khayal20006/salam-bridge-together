@@ -29,7 +29,7 @@ ilan həm hiss edilən şəkildə uzansın, həm də azca qalınlaşsın.
 | Ayrılmış və regional oyun serverləri işləsin                            | Canlıda təsdiqlənməyib          | Node WebSocket serveri hazırlanıb, lokal yoxlanıb. Ayrı xidmətin yayımlanması və VITE_ARENA_URL konfiqurasiyası lazımdır. Region adları həqiqi coğrafi server yerləşdirilməsi deyil.                                                                                         |
 | Heç bir bug və sıfır gecikmə olsun                                      | Təsdiqlənməyib                  | Aşkarlanan xətalar konkret testlərlə yoxlanır. Bütün mümkün xətaların yoxluğu və internetdə sıfır gecikmə zəmanəti verilmir.                                                                                                                                                 |
 
-65 avtomatik test, TypeScript, ESLint, production build, real WebSocket və real
+68 avtomatik test, TypeScript, ESLint, production build, real WebSocket və real
 Supabase brauzer sınaqları keçirilib. Brauzer ehtiyat rejimi etibarlı ayrılmış
 serverin təhlükəsizlik zəmanətlərini vermir. Logo və bütün skinlərin vizual
 keyfiyyətinin insan tərəfindən tam qiymətləndirilməsi ayrıca açıq qalır.
@@ -48,3 +48,9 @@ proqnoz söndürülür. 65 test və real brauzerdə 1 saniyədə 61 proqnoz kadr
 İki real brauzerdə eyni botlar və host dəyişməsi yoxlanıb. Ayrıca oyun serverinin
 olmadığı istifadəçi tərəfindən təsdiqlənib; yalnız Lovable ilə brauzer hostunun
 gecikməsi və dayandırılması tam aradan qalxmır.
+
+2026.11.03.5: daha sıx bədən (10 yerinə 37 çəkiliş nöqtəsi), paket gələn kadrdakı
+dayanma və quyruğun yana sıçraması üçün regresiya testləri əlavə edildi. Yüngül
+kənar təmas üçün toqquşma radiusu 80%-ə endirildi; normal yem 0,75 uzunluq verir.
+Tab keçidində dayanmama, hostun checkpoint ilə ötürülməsi və səhifəni yeniləyən
+oyunçunun eyni dünyaya qoşulması real Supabase bağlantısında yoxlanır.

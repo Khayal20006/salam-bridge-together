@@ -1,7 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { BodyTrail, angleDelta, interpolateAngle, smoothTurn, traceBodyCurve } from "./movement";
+import {
+  BodyTrail,
+  angleDelta,
+  interpolateAngle,
+  smoothSpine,
+  smoothTurn,
+  traceBodyCurve,
+} from "./movement";
 
 describe("fluid snake movement", () => {
+  it("draws four times as many spine intervals without changing the network body", () => {
+    const points = Array.from({ length: 10 }, (_, i) => ({ x: i * 8, y: Math.sin(i / 3) * 8 }));
+    const saved = structuredClone(points),
+      output: { x: number; y: number }[] = [];
+    smoothSpine(points, output, 4);
+    expect(output).toHaveLength(37);
+    expect(output[0]).toEqual(points[0]);
+    expect(output.at(-1)).toEqual(points.at(-1));
+    const reused = output[5];
+    smoothSpine(points, output, 4);
+    expect(output[5]).toBe(reused);
+    expect(points).toEqual(saved);
+    for (let i = 1; i < output.length; i++)
+      expect(
+        Math.hypot(output[i]!.x - output[i - 1]!.x, output[i]!.y - output[i - 1]!.y),
+      ).toBeLessThan(3);
+  });
   it("moves the turn through every body segment and the tail along the head's actual route", () => {
     const history = Array.from({ length: 8 }, (_, i) => ({ x: 0 - i * 8, y: 0 }));
     const trail = new BodyTrail(history);

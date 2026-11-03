@@ -11,7 +11,8 @@ export const BOOST_SPEED = 420;
 export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
-const FOOD_GROWTH_MULTIPLIER = 2;
+const FOOD_GROWTH_MULTIPLIER = 2.5;
+const COLLISION_SCALE = 0.8;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
@@ -58,11 +59,11 @@ export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
 export const snakeWidth = (s: Pick<Snake, "len">) =>
-  11 + Math.min(7, Math.log2(1 + Math.max(0, s.len - 10) / 50) * 1.8);
+  11 + Math.min(7, Math.log2(1 + Math.max(0, s.len - 10) / 40) * 3);
 export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
   s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>
-  Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.4));
+  Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.1));
 export const cloneSnake = (s: Snake): Snake => ({ ...s, pts: s.pts.map((p) => ({ ...p })) });
 
 /** Shared visual/authoritative kinematics; food and collision decisions stay in Arena. */
@@ -295,7 +296,7 @@ export class Arena {
     const bodies = new SpatialGrid<Body>(100);
     for (const s of this.snakes.values()) {
       if (isSpawnProtected(s, this.tick)) continue;
-      const radius = snakeWidth(s);
+      const radius = snakeWidth(s) * COLLISION_SCALE;
       for (let i = 2; i < s.pts.length; i++) {
         const a = s.pts[i - 1]!,
           b = s.pts[i]!;
@@ -314,8 +315,8 @@ export class Arena {
       const s = snakes[i]!,
         head = s.pts[0]!,
         old = previous.get(s.id)!,
-        radius = snakeWidth(s);
-      if (Math.hypot(head.x, head.y) + radius >= WORLD) dead.add(s.id);
+        radius = snakeWidth(s) * COLLISION_SCALE;
+      if (Math.hypot(head.x, head.y) + snakeWidth(s) >= WORLD) dead.add(s.id);
       if (isSpawnProtected(s, this.tick)) continue;
       for (let j = i + 1; j < snakes.length; j++) {
         const other = snakes[j]!,
@@ -329,7 +330,7 @@ export class Arena {
             { x: old.x - a.x, y: old.y - a.y },
             { x: head.x - b.x, y: head.y - b.y },
           ) <
-          (radius + snakeWidth(other)) ** 2
+          (radius + snakeWidth(other) * COLLISION_SCALE) ** 2
         ) {
           const difference = s.len - other.len;
           const winner =
@@ -351,7 +352,7 @@ export class Arena {
       if (dead.has(s.id) || isSpawnProtected(s, this.tick)) continue;
       const head = s.pts[0]!,
         old = previous.get(s.id)!,
-        radius = snakeWidth(s);
+        radius = snakeWidth(s) * COLLISION_SCALE;
       for (const body of bodies.query(
         Math.min(old.x, head.x) - radius,
         Math.min(old.y, head.y) - radius,

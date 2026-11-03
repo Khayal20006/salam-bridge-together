@@ -20,6 +20,40 @@ const player = (): Snake => ({
 });
 
 describe("local movement prediction", () => {
+  it("does not kick a stationary tail sideways when reconciling a turn at the head", () => {
+    const prediction = new LocalPrediction(),
+      source = player(),
+      shown = cloneSnake(source);
+    prediction.reconcile(source, 0);
+    prediction.steer(Math.PI / 2, false);
+    for (let at = 16; at <= 96; at += 16) prediction.renderInto(shown, at);
+    const tailBefore = { ...shown.pts.at(-1)! };
+    const delayed = player();
+    for (const p of delayed.pts) p.x += 5;
+    prediction.reconcile(delayed, 96);
+    prediction.renderInto(shown, 96);
+    expect(Math.abs(shown.pts.at(-1)!.y - tailBefore.y)).toBeLessThan(0.01);
+  });
+  it("keeps moving at constant speed on the exact frame an authority packet arrives", () => {
+    const prediction = new LocalPrediction(),
+      source = player(),
+      shown = cloneSnake(source);
+    prediction.reconcile(source, 0);
+    prediction.steer(0, false);
+    let previous = shown.pts[0]!.x;
+    for (let at = 16; at <= 960; at += 16) {
+      if (at % 96 === 0) {
+        const state = player();
+        for (const p of state.pts) p.x += (156 * at) / 1000;
+        prediction.reconcile(state, at);
+      }
+      prediction.renderInto(shown, at);
+      const travelled = shown.pts[0]!.x - previous;
+      expect(travelled).toBeGreaterThan(2.1);
+      expect(travelled).toBeLessThan(3);
+      previous = shown.pts[0]!.x;
+    }
+  });
   it("responds within the next frame while authority input can still be in flight", () => {
     const source = player(),
       saved = structuredClone(source),

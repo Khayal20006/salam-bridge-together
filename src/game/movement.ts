@@ -6,6 +6,41 @@ export const angleDelta = (from: number, to: number) =>
 export const interpolateAngle = (from: number, to: number, alpha: number) =>
   from + angleDelta(from, to) * alpha;
 
+/** Dense visual spine; authority/collision points and packet sizes stay unchanged. */
+export function smoothSpine(points: Point[], output: Point[], divisions = 4): Point[] {
+  if (points.length < 2) {
+    output.length = 0;
+    return output;
+  }
+  let count = 0;
+  const write = (x: number, y: number) => {
+    const p = output[count] ?? (output[count] = { x: 0, y: 0 });
+    p.x = x;
+    p.y = y;
+    count++;
+  };
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[Math.max(0, i - 1)]!,
+      b = points[i]!,
+      c = points[i + 1]!,
+      d = points[Math.min(points.length - 1, i + 2)]!;
+    for (let step = 0; step < divisions; step++) {
+      const t = step / divisions,
+        t2 = t * t,
+        t3 = t2 * t;
+      const aa = (-t3 + 2 * t2 - t) * 0.5,
+        bb = (3 * t3 - 5 * t2 + 2) * 0.5,
+        cc = (-3 * t3 + 4 * t2 + t) * 0.5,
+        dd = (t3 - t2) * 0.5;
+      write(a.x * aa + b.x * bb + c.x * cc + d.x * dd, a.y * aa + b.y * bb + c.y * cc + d.y * dd);
+    }
+  }
+  const tail = points.at(-1)!;
+  write(tail.x, tail.y);
+  output.length = count;
+  return output;
+}
+
 /** Sample the travelled head path by distance, so every bend travels all the way to the tail. */
 export class BodyTrail {
   private points: Point[];

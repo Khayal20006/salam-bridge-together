@@ -36,14 +36,18 @@ export class RealtimeConnection implements ArenaConnection {
   private lastReceived = performance.now();
   private lastInput: { angle: number; boost: boolean; at: number } | undefined;
   private pending: { name: string; skin: string; nonce: number; tick: number } | undefined;
+  private profile: { name: string; skin: string; nonce: number; tick: number } | undefined;
   private election: ReturnType<typeof setTimeout> | undefined;
+  private candidate: string | null | undefined;
   private watchdog: ReturnType<typeof setInterval>;
   private sending = false;
   private generation = 0;
   private queued: { snapshot: Snapshot; full: boolean } | undefined;
   private forceFull = true;
+  private pageHide = () => this.close();
   private visibility = () => {
     if (document.hidden) this.input(this.lastInput?.angle ?? 0, false);
+    else this.resume();
     if (this.connected) void this.track();
   };
 
@@ -59,8 +63,22 @@ export class RealtimeConnection implements ArenaConnection {
     });
     this.channel.on("presence", { event: "sync" }, () => this.elect());
     this.channel.on("broadcast", { event: "state" }, ({ payload }) => {
-      if (this.closed || !this.connected || payload?.host !== this.host || this.host === this.id)
-        return;
+      if (this.closed || !this.connected) return;
+      if (payload?.host !== this.host) {
+        // Two peers can briefly bootstrap before presence converges. Follow the
+        // elected, already publishing authority instead of retaining two worlds.
+        if (
+          payload?.host !== this.id &&
+          typeof payload?.world === "string" &&
+          payload.world !== this.world &&
+          electHost(this.channel.presenceState()) === payload?.host
+        ) {
+          if (this.current?.snakes.some((s) => s.id === this.id) && this.profile)
+            this.pending = { ...this.profile };
+          this.changeHost(payload.host);
+        } else return;
+      }
+      if (this.host === this.id) return;
       if (typeof payload.world !== "string" || payload.world.length > 80) return;
       const changedWorld = this.world !== payload.world;
       const next = unpackSnapshot(payload.state, changedWorld ? undefined : this.current);
@@ -71,8 +89,15 @@ export class RealtimeConnection implements ArenaConnection {
       if (!changedWorld && this.current && next.tick < this.current.tick) return;
       // An equal-tick keyframe can contain a join or leave. It must replace the old frame.
       if (!changedWorld && next.tick === this.current?.tick && payload.state.base !== null) return;
+      const recover =
+        changedWorld &&
+        this.profile &&
+        this.current?.snakes.some((s) => s.id === this.id) &&
+        !next.snakes.some((s) => s.id === this.id);
+      if (recover) this.pending = { ...this.profile! };
       this.world = payload.world;
       this.accept(next);
+      if (recover) this.sendJoin();
     });
     this.channel.on("broadcast", { event: "rejected" }, ({ payload }) => {
       if (payload?.host === this.host && payload?.id === this.id) {
@@ -81,6 +106,24 @@ export class RealtimeConnection implements ArenaConnection {
       }
     });
     this.channel.on("broadcast", { event: "command" }, ({ payload }) => this.command(payload));
+    this.channel.on("broadcast", { event: "handoff" }, ({ payload }) => {
+      if (
+        this.closed ||
+        !this.connected ||
+        payload?.host !== this.host ||
+        payload.world !== this.world ||
+        typeof payload.to !== "string" ||
+        !(payload.to in this.channel.presenceState())
+      )
+        return;
+      const state = unpackSnapshot(payload.state);
+      if (!state) return;
+      this.accept(state);
+      clearTimeout(this.election);
+      this.election = undefined;
+      this.candidate = undefined;
+      this.changeHost(payload.to);
+    });
     this.channel.subscribe((status) => {
       if (this.closed) return;
       if (status === "SUBSCRIBED") {
@@ -90,11 +133,13 @@ export class RealtimeConnection implements ArenaConnection {
         this.connected = false;
         this.stopWorker();
         clearTimeout(this.election);
+        this.candidate = undefined;
         this.host = null;
         this.events.status("reconnecting");
       }
     });
     document.addEventListener("visibilitychange", this.visibility);
+    addEventListener("pagehide", this.pageHide);
     this.watchdog = setInterval(() => {
       if (!this.connected) return;
       if (this.pending) this.sendJoin();
@@ -106,7 +151,7 @@ export class RealtimeConnection implements ArenaConnection {
   }
 
   private async track(): Promise<void> {
-    await this.channel.track({ at: this.joined, visible: !document.hidden });
+    await this.channel.track({ at: this.joined, visible: !document.hidden, checkpoint: true });
     if (!this.closed && this.connected) this.elect();
   }
   private broadcast(event: string, payload: unknown): Promise<string> {
@@ -131,15 +176,54 @@ export class RealtimeConnection implements ArenaConnection {
     this.events.count(Object.keys(presence).length);
     this.worker?.postMessage({ type: "members", ids: Object.keys(presence) });
     const next = electHost(presence);
-    if (next === this.host) return;
-    // Stop an old authority immediately, then allow presence to settle before starting a new one.
-    this.stopWorker();
+    if (next === this.host) {
+      clearTimeout(this.election);
+      this.election = undefined;
+      this.candidate = undefined;
+      return;
+    }
+    if (this.candidate === next && this.election) return;
     clearTimeout(this.election);
+    this.candidate = next;
+    // Keep the current worker running through transient tab switches. Only hand
+    // over after sustained visibility; a departed host needs no visibility delay.
+    const delay = this.host && Object.hasOwn(presence, this.host) ? 1500 : 350;
+    this.election = setTimeout(() => {
+      this.election = undefined;
+      this.candidate = undefined;
+      if (this.closed || !this.connected) return;
+      const actual = electHost(this.channel.presenceState());
+      if (actual !== next) {
+        this.elect();
+        return;
+      }
+      const members = this.channel.presenceState() as Record<string, { checkpoint?: boolean }[]>;
+      const canTransfer =
+        this.host && next && members[this.host]?.[0]?.checkpoint && members[next]?.[0]?.checkpoint;
+      if (canTransfer) {
+        if (this.host === this.id) this.handoff(next!);
+        else if (next === this.id)
+          void this.broadcast("command", { type: "handoff", id: this.id, to: next });
+      } else this.changeHost(next);
+    }, delay);
+  }
+  private changeHost(next: string | null): void {
+    this.stopWorker();
     this.host = next;
     this.lastSync = -Infinity;
     this.lastInput = undefined;
     this.events.status("connecting");
-    this.election = setTimeout(() => this.activate(next), 350);
+    this.activate(next);
+    this.elect();
+  }
+  private handoff(to: string): void {
+    if (!this.worker || this.host !== this.id || !this.current) return;
+    const state = packSnapshot(this.current);
+    this.stopWorker();
+    this.events.status("connecting");
+    void this.broadcast("handoff", { host: this.id, to, world: this.world, state }).then(() => {
+      if (!this.closed && this.connected && this.host === this.id) this.changeHost(to);
+    });
   }
   private activate(host: string | null): void {
     if (this.closed || !this.connected || host !== this.host || !host) return;
@@ -214,7 +298,11 @@ export class RealtimeConnection implements ArenaConnection {
     const m = value as Record<string, unknown>,
       key = m["id"];
     if (typeof key !== "string" || !(key in this.channel.presenceState())) return;
-    if (m["type"] === "sync") {
+    if (m["type"] === "handoff") {
+      const to = m["to"];
+      if (typeof to === "string" && to === electHost(this.channel.presenceState()))
+        this.handoff(to);
+    } else if (m["type"] === "sync") {
       const now = performance.now();
       if (now - this.lastSync >= 250) {
         this.lastSync = now;
@@ -272,6 +360,7 @@ export class RealtimeConnection implements ArenaConnection {
       nonce: (this.pending?.nonce ?? Date.now()) + 1,
       tick: this.current?.tick ?? -1,
     };
+    this.profile = this.pending;
     this.sendJoin();
   }
   input(angle: number, boost: boolean): number | undefined {
@@ -293,12 +382,22 @@ export class RealtimeConnection implements ArenaConnection {
     return message.seq;
   }
   close(): void {
+    if (this.closed) return;
     this.closed = true;
     this.connected = false;
     this.stopWorker();
     clearTimeout(this.election);
     clearInterval(this.watchdog);
     document.removeEventListener("visibilitychange", this.visibility);
+    removeEventListener("pagehide", this.pageHide);
     void this.client.removeChannel(this.channel);
+  }
+  resume(): void {
+    if (this.closed || !this.connected) return;
+    if (this.worker) this.worker.postMessage({ type: "sync" });
+    else {
+      this.lastSync = -Infinity;
+      this.requestSync();
+    }
   }
 }

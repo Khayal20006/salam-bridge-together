@@ -12,6 +12,7 @@ export type ConnectionEvents = {
 export interface ArenaConnection {
   play(name: string, skin: string): void;
   input(angle: number, boost: boolean): number | undefined;
+  resume(): void;
   close(): void;
 }
 
@@ -141,5 +142,8 @@ class SocketConnection implements ArenaConnection {
     this.closed = true;
     clearTimeout(this.timer);
     this.socket?.close();
+  }
+  resume(): void {
+    this.send({ type: "sync" });
   }
 }

@@ -79,6 +79,10 @@ async function page(room = "eu-4") {
   await cdp("Page.enable", {}, sessionId);
   await cdp("Page.navigate", { url: process.env.APP_URL || "http://127.0.0.1:8080/" }, sessionId);
   await until(() => evaluate("document.readyState === 'complete'", sessionId));
+  await connectPage(sessionId, room);
+  return { sessionId, targetId };
+}
+async function connectPage(sessionId, room = "eu-4") {
   await evaluate(
     `(async () => {
     const {RealtimeConnection} = await import('/src/game/realtime.ts');
@@ -99,7 +103,6 @@ async function page(room = "eu-4") {
   })()`,
     sessionId,
   );
-  return { sessionId, targetId };
 }
 const check = (p, expression) => evaluate(expression, p.sessionId);
 async function matching(a, b) {
@@ -149,6 +152,29 @@ try {
   console.log("PASS: both players join the same world.");
   const host = (await check(a, "!!window.testArena.worker")) ? a : b;
   const follower = host === a ? b : a;
+  const hiddenHost = await check(host, "document.hidden"),
+    hiddenFollower = await check(follower, "document.hidden");
+  const beforeSwitch = await check(host, "window.testArena.current.tick");
+  await check(
+    host,
+    "Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'))",
+  );
+  await check(
+    follower,
+    "Object.defineProperty(document,'hidden',{configurable:true,get:()=>false});document.dispatchEvent(new Event('visibilitychange'))",
+  );
+  await sleep(250);
+  assert.equal(await check(host, "!!window.testArena.worker"), true);
+  assert.ok((await check(host, "window.testArena.current.tick")) > beforeSwitch);
+  await check(
+    host,
+    `Object.defineProperty(document,'hidden',{configurable:true,get:()=>${hiddenHost}});document.dispatchEvent(new Event('visibilitychange'))`,
+  );
+  await check(
+    follower,
+    `Object.defineProperty(document,'hidden',{configurable:true,get:()=>${hiddenFollower}});document.dispatchEvent(new Event('visibilitychange'))`,
+  );
+  console.log("PASS: a brief tab switch does not stop the authority worker.");
   const world = await check(host, "window.testWorld");
   const tick = await check(follower, "window.testArena.current.tick");
   await check(
@@ -174,16 +200,40 @@ try {
   await check(host, "window.testArena.current = undefined; window.testStates.clear()");
   await until(async () => (await matching(a, b)).count >= 3);
   console.log("PASS: a missing delta baseline recovers automatically.");
-  const beforeClose = await check(host, "window.testArena.current.tick");
-  await check(follower, "window.testArena.close()");
+  const reloadTick = await check(host, "window.testArena.current.tick");
+  const previousId = await check(follower, "window.testId");
+  const reloadUrl = new URL(process.env.APP_URL || "http://127.0.0.1:8080/");
+  reloadUrl.searchParams.set("reload-check", Date.now().toString());
+  await cdp("Page.navigate", { url: reloadUrl.href }, follower.sessionId);
+  await until(() => check(follower, "document.readyState === 'complete' && !window.testArena"));
+  await connectPage(follower.sessionId);
+  await until(() => check(follower, "window.testStatus === 'online'"));
+  await check(follower, "window.testArena.play('AfterRefresh','hue')");
+  await until(async () => {
+    const match = (await matching(a, b)).last;
+    return (
+      match &&
+      match[0] > reloadTick &&
+      JSON.parse(match[1]).snakes.some((s) => s.name === "AfterRefresh") &&
+      !JSON.parse(match[1]).snakes.some((s) => s.id === previousId)
+    );
+  }, 25000);
+  assert.equal(await check(follower, "window.testWorld"), world);
+  console.log(
+    "PASS: refreshing the host releases its old presence and rejoins the same advancing world.",
+  );
+  const owner = (await check(a, "!!window.testArena.worker")) ? a : b;
+  const survivor = owner === a ? b : a;
+  const beforeClose = await check(survivor, "window.testArena.current.tick");
+  await check(owner, "window.testArena.close()");
   await until(
     async () =>
-      (await check(host, "!!window.testArena.worker")) &&
-      (await check(host, "window.testArena.current.tick")) > beforeClose + 5,
+      (await check(survivor, "!!window.testArena.worker")) &&
+      (await check(survivor, "window.testArena.current.tick")) > beforeClose + 5,
   );
-  assert.equal(await check(host, "window.testWorld"), world);
+  assert.equal(await check(survivor, "window.testWorld"), world);
   console.log("PASS: closing the host preserves the world on the surviving client.");
-  await check(host, "window.testArena.close()");
+  await check(survivor, "window.testArena.close()");
   assert.deepEqual(errors, []);
   console.log("PASS: no browser JavaScript exceptions.");
 } finally {

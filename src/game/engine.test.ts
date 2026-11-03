@@ -44,6 +44,7 @@ describe("authoritative arena", () => {
     const player = snake("player", -12, 0);
     player.spawnTick = 0;
     const wall = snake("wall", 0, -180, -Math.PI / 2);
+    wall.len = 40;
     wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
     arena.snakes.set(player.id, player);
     arena.snakes.set(wall.id, wall);
@@ -66,13 +67,16 @@ describe("authoritative arena", () => {
     expect(arena.snakes.has(opponent.id)).toBe(true);
     expect(arena.deaths).toHaveLength(0);
   });
-  it("uses the visible head radius so a grazing body hit cannot pass through", () => {
+  it("forgives a light edge graze while killing a deeper body collision", () => {
     const arena = new Arena(random(), false);
-    const player = snake("player", -24, 0),
+    const player = snake("player", -27, 0),
       wall = snake("wall", 0, -180, -Math.PI / 2);
+    wall.len = 40;
     wall.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
     arena.snakes.set(player.id, player);
     arena.snakes.set(wall.id, wall);
+    arena.step();
+    expect(arena.deaths.some((d) => d.id === player.id)).toBe(false);
     arena.step();
     expect(arena.deaths.some((d) => d.id === player.id)).toBe(true);
   });
@@ -208,6 +212,7 @@ describe("authoritative arena", () => {
     moving.len = 50;
     moving.boost = true;
     const body = snake("wall", 0, -180, -Math.PI / 2);
+    body.len = 40;
     body.pts = Array.from({ length: 50 }, (_, i) => ({ x: 0, y: -180 + i * 8 }));
     arena.snakes.set(moving.id, moving);
     arena.snakes.set(body.id, body);
@@ -220,7 +225,7 @@ describe("authoritative arena", () => {
     arena.snakes.set("b", snake("b", 25, 0, Math.PI));
     arena.foods.set(9001, { id: 9001, x: 0, y: 0, v: 10, hue: 0, r: 4 });
     arena.step();
-    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 40]);
+    expect([...arena.snakes.values()].map((s) => s.len).sort()).toEqual([20, 45]);
     expect(arena.foods.has(9001)).toBe(false);
   });
   it("ignores malformed and out-of-order input instead of accepting positions", () => {
@@ -242,7 +247,7 @@ describe("authoritative arena", () => {
     expect(segmentCount(10.3) - segmentCount(10)).toBeLessThanOrEqual(1);
     expect(segmentCount(13) - segmentCount(10)).toBeLessThanOrEqual(5);
     expect(snakeWidth({ len: 13 })).toBeGreaterThan(snakeWidth({ len: 10 }));
-    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.2);
+    expect(snakeWidth({ len: 13 }) - snakeWidth({ len: 10 })).toBeLessThan(0.4);
   });
   it("makes repeated normal meals visibly extend the body and gently increase thickness", () => {
     const arena = new Arena(random(), false),
@@ -262,10 +267,10 @@ describe("authoritative arena", () => {
       });
       arena.step();
     }
-    expect(player.len).toBeGreaterThanOrEqual(18.9);
+    expect(player.len).toBeGreaterThanOrEqual(21.2);
     expect(player.pts.length).toBeGreaterThan(originalPoints + 8);
     expect(snakeWidth(player)).toBeGreaterThan(11);
-    expect(snakeWidth(player)).toBeLessThan(12);
+    expect(snakeWidth(player)).toBeLessThan(12.5);
   });
   it("transfers the exact simulation when authority changes", () => {
     const original = new Arena(random());

@@ -11,7 +11,7 @@ import {
   type Snake,
   type Snapshot,
 } from "@/game/engine";
-import { interpolateAngle, traceBodyCurve } from "@/game/movement";
+import { interpolateAngle, smoothSpine, traceBodyCurve } from "@/game/movement";
 import { snapshotIndex } from "@/game/snapshot-index";
 import { LocalPrediction } from "@/game/prediction";
 
@@ -48,7 +48,9 @@ export default function GameCanvas(props: Props) {
       self = "",
       world = "",
       active = false,
-      requested = false;
+      requested = false,
+      rebaseHistory = false,
+      resetCamera = true;
     let latest: Snapshot | undefined,
       wasAlive = false,
       fpsCount = 0,
@@ -63,6 +65,7 @@ export default function GameCanvas(props: Props) {
       snakes: Map<string, Snake>;
     }[] = [];
     const rendered = new Map<string, Snake>();
+    const spines = new Map<string, Snake["pts"]>();
     const all: Snake[] = [];
     const prediction = new LocalPrediction();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
@@ -101,9 +104,16 @@ export default function GameCanvas(props: Props) {
           wasAlive = false;
           history.length = 0;
           rendered.clear();
+          spines.clear();
           prediction.clear();
+          resetCamera = true;
         }
         latest = state;
+        if (rebaseHistory) {
+          history.length = 0;
+          rebaseHistory = false;
+          resetCamera = true;
+        }
         if (history.at(-1)?.state.tick === state.tick) history.pop();
         history.push({
           state,
@@ -113,6 +123,11 @@ export default function GameCanvas(props: Props) {
         });
         if (history.length > 8) history.shift();
         const me = state.snakes.find((s) => s.id === self);
+        if (me && resetCamera) {
+          cam.x = me.pts[0]!.x;
+          cam.y = me.pts[0]!.y;
+          resetCamera = false;
+        }
         if (me) prediction.reconcile(me, performance.now());
         else prediction.clear();
         if (me) {
@@ -195,6 +210,23 @@ export default function GameCanvas(props: Props) {
     };
     const visibility = () => {
       if (document.hidden) up();
+      else {
+        lastFrame = performance.now();
+        lastInput = 0;
+        const last = history.at(-1);
+        history.length = 0;
+        if (last) {
+          last.at = performance.now();
+          history.push(last);
+        }
+        rebaseHistory = true;
+        prediction.clear();
+        connection.resume();
+      }
+    };
+    const pageHide = () => connection.close();
+    const pageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) location.reload();
     };
     addEventListener("pointermove", move);
     addEventListener("pointerdown", down);
@@ -204,10 +236,12 @@ export default function GameCanvas(props: Props) {
     addEventListener("keydown", keyboard);
     addEventListener("keyup", keyboard);
     document.addEventListener("visibilitychange", visibility);
+    addEventListener("pagehide", pageHide);
+    addEventListener("pageshow", pageShow);
 
-    const path = (snake: Snake) => {
+    const path = (points: Snake["pts"]) => {
       ctx.beginPath();
-      traceBodyCurve(ctx, snake.pts);
+      traceBodyCurve(ctx, points);
     };
     const frame = (now: number) => {
       const cfg = latestProps.current.config,
@@ -267,7 +301,11 @@ export default function GameCanvas(props: Props) {
         all[visibleCount++] = shown;
       }
       all.length = visibleCount;
-      for (const key of rendered.keys()) if (!currentIds?.has(key)) rendered.delete(key);
+      for (const key of rendered.keys())
+        if (!currentIds?.has(key)) {
+          rendered.delete(key);
+          spines.delete(key);
+        }
       const me = all.find((s) => s.id === self);
       if (me) {
         if (active) prediction.renderInto(me, now);
@@ -329,14 +367,22 @@ export default function GameCanvas(props: Props) {
           radius = snakeWidth(s);
         if (
           s.pts.length < 2 ||
-          Math.abs(head.x - cam.x) > vw + s.pts.length * SEG ||
-          Math.abs(head.y - cam.y) > vh + s.pts.length * SEG
+          !s.pts.some(
+            (p) => Math.abs(p.x - cam.x) < vw + radius && Math.abs(p.y - cam.y) < vh + radius,
+          )
         )
           continue;
         const skin = SKIN_BY[s.skin] ?? SKINS[0]!,
           colors = skin.colors,
           first = colors[0]!;
-        path(s);
+        const divisions = cfg.quality === "low" ? 2 : 4;
+        let points = spines.get(s.id);
+        if (!points) {
+          points = [];
+          spines.set(s.id, points);
+        }
+        smoothSpine(s.pts, points, divisions);
+        path(points);
         if (s.boost && cfg.boostFx) {
           ctx.strokeStyle = `${first}44`;
           ctx.lineWidth = radius * 2 + 14;
@@ -359,16 +405,18 @@ export default function GameCanvas(props: Props) {
             ctx.stroke();
           }
         } else {
-          const stride = cfg.quality === "low" ? 6 : 4,
+          const stride = (cfg.quality === "low" ? 6 : 4) * divisions,
             period = stride * colors.length;
           const shift =
-            skin.type === "stripes" || cfg.quality === "low" ? 0 : Math.floor(now / 90) % period;
+            skin.type === "stripes" || cfg.quality === "low"
+              ? 0
+              : (Math.floor(now / 90) * divisions) % period;
           for (let j = 0; j < colors.length; j++) {
             ctx.beginPath();
-            for (let i = ((j * stride + shift) % period) - period; i < s.pts.length; i += period) {
+            for (let i = ((j * stride + shift) % period) - period; i < points.length; i += period) {
               const start = Math.max(0, i),
-                end = Math.min(i + stride - 1, s.pts.length - 1);
-              if (end >= start) traceBodyCurve(ctx, s.pts, start, end);
+                end = Math.min(i + stride - 1, points.length - 1);
+              if (end >= start) traceBodyCurve(ctx, points, start, end);
             }
             ctx.strokeStyle =
               skin.type === "anim"
@@ -379,7 +427,7 @@ export default function GameCanvas(props: Props) {
           }
         }
         // A single highlight follows the body; expensive shadows and per-segment gradients are avoided.
-        path(s);
+        path(points);
         ctx.strokeStyle = "rgba(255,255,255,0.24)";
         ctx.lineWidth = radius * 0.38;
         ctx.stroke();
@@ -507,6 +555,8 @@ export default function GameCanvas(props: Props) {
       removeEventListener("keydown", keyboard);
       removeEventListener("keyup", keyboard);
       document.removeEventListener("visibilitychange", visibility);
+      removeEventListener("pagehide", pageHide);
+      removeEventListener("pageshow", pageShow);
     };
     // Props are read through latestProps; reconnect only when changing rooms.
     // eslint-disable-next-line react-hooks/exhaustive-deps
