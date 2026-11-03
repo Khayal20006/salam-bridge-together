@@ -29,6 +29,32 @@ try {
   });
   await until(() => !!port);
   assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
+  // The project's own hosted origins must be accepted; foreign origins must be refused.
+  const { WebSocket: WsClient } = await import("ws");
+  const openFrom = (origin) =>
+    new Promise((resolve) => {
+      const socket = new WsClient(`ws://127.0.0.1:${port}/arena/eu-1`, {
+        headers: { Origin: origin },
+      });
+      // Probe sockets hang up at once so they never inflate the room's player count.
+      socket.once("open", () => {
+        socket.close();
+        resolve("open");
+      });
+      socket.once("unexpected-response", (_req, res) => resolve(res.statusCode));
+      socket.once("error", () => resolve("error"));
+    });
+
+  assert.equal(
+    await openFrom("https://id-preview--92656ffd-5fa6-47aa-8ee5-4f6046baf72c.lovable.app"),
+    "open",
+  );
+  assert.equal(await openFrom("https://neonworm.app"), "open");
+  assert.equal(await openFrom("https://www.neonworm.app"), "open");
+  assert.equal(await openFrom("http://localhost:8080"), "open");
+  assert.equal(await openFrom("https://evil.example"), 403);
+  assert.equal(await openFrom("https://lovable.app.evil.example"), 403);
+
   function connect(room) {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/arena/${room}`);
     sockets.push(ws);
