@@ -9,6 +9,7 @@ import {
   pointSegmentDistanceSquared,
   isSpawnProtected,
   SPAWN_PROTECTION_TICKS,
+  advanceHead,
   type Snake,
 } from "./engine";
 import { packSnapshot, unpackSnapshot } from "./protocol";
@@ -38,6 +39,18 @@ function snake(id: string, x: number, y: number, angle = 0): Snake {
 }
 
 describe("authoritative arena", () => {
+  it("keeps normal travel steady and limits boost to about twice normal speed", () => {
+    const normal = snake("normal", 0, 0),
+      boosted = snake("boosted", 0, 0);
+    boosted.boost = true;
+    const a = advanceHead(normal, 1),
+      b = advanceHead(boosted, 1);
+    expect(a.x).toBeCloseTo(156);
+    expect(b.x / a.x).toBeGreaterThan(1.9);
+    expect(b.x / a.x).toBeLessThan(2.2);
+    expect(a.y).toBe(0);
+    expect(b.y).toBe(0);
+  });
   it("leaves large pellets from a large snake and small pellets from a small snake for all peers", () => {
     const arena = new Arena(random(), false),
       small = snake("small", 2998, -300),

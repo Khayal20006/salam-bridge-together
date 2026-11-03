@@ -327,3 +327,50 @@ and a native browser smoke check passed. The two-browser Supabase suite also
 passed shared bots, host handoff, resync, refresh and disconnect recovery checks.
 The last live bundle check still reported 2026.11.03.3: pushing GitHub does not
 publish a new Lovable snapshot or deploy the standalone arena service.
+
+## Boost camera and simulation scratch storage: 2026.11.03.9
+
+Normal movement remains 156 units/second. Boost is now 320 rather than 420
+(23.8% slower). Both mouse buttons and Space send the same boost intent;
+the active canvas suppresses the right-button context menu, and release/blur
+still clear boost. A real CDP browser test checks sent boost/release commands
+and context-menu cancellation.
+
+The camera now follows position and zoom with critically damped axes. Camera
+velocity carries between frames rather than reacting directly to each position
+step; spawn/world/resume resets clear that velocity. A 300-frame synthetic
+320-unit/second replay with alternating 3-unit network corrections reduced the
+maximum frame-to-frame camera velocity change from 56.61 to 23.53 units/second
+(58.4%). This is a controlled regression measurement, not proof that all reported
+production shaking has the same cause. Tests also cover 60/120 Hz following and
+respawn without residual drift.
+
+Profiling the prior seeded simulation attributed about 22% of samples to spatial
+insert/query and 6% to garbage collection. Food, navigation and collision grids
+now retain their buckets, use numeric row/column keys, and fill caller-owned
+query sets. Collision/navigation records and relative head vectors are reused;
+unchanged tick-local radii are calculated once. The authority retains immutable
+body paths. Neither draw detail nor collision rules changed in this optimization.
+
+`npm run benchmark:simulation` measures simulation allocation separately from
+rendering and replication. With boost set to 320 in both the original and new
+engine, a local 600-tick allocation-profiled sample recorded:
+
+| Measurement | Original storage | Reused storage |
+| --- | ---: | ---: |
+| Average human players / bots | 49.2 / 18 | 49.2 / 18 |
+| Sampled cumulative allocation | 968.66 MB | 574.81 MB |
+| Observed GC count | 115 | 67 |
+| Maximum observed GC | 3.47 ms | 2.86 ms |
+| Simulation tick p95 | 5.11 ms | 5.47 ms |
+
+Allocation fell about 41%; this sample does not demonstrate a lower p95 CPU time.
+The final simulation SHA-256 was identical on both engines:
+`0cbf8936a906c6a508c8a77e3c4c025b5748d60240544ccd833fbf17fcbc42fd`.
+A separate 400-tick comparison also matched every full state and encoded view
+stream, using the same boost setting. `BENCHMARK_ENGINE` can select a preserved
+reference module. Pooled capacity is retained for reuse; allocation totals are
+not resident RAM and these local samples are not Internet latency guarantees.
+
+90 unit tests, TypeScript, ESLint, production build, real WebSocket integration,
+right-button browser controls, and the two-browser Supabase lifecycle suite passed.

@@ -23,7 +23,8 @@ let endpoint,
   socket,
   seq = 0;
 const pending = new Map(),
-  errors = [];
+  errors = [],
+  inputs = [];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 browser.stderr.on("data", (data) => {
   const m = /DevTools listening on (ws:\/\/\S+)/.exec(data.toString());
@@ -90,11 +91,20 @@ try {
       errors.push(
         msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text,
       );
+    if (msg.method === "Network.webSocketFrameSent") {
+      try {
+        const packet = JSON.parse(msg.params.response.payloadData);
+        if (packet.type === "input") inputs.push(packet);
+      } catch {
+        /* Non-JSON transport frames are irrelevant to controls. */
+      }
+    }
   };
   const { targetId } = await cdp("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await cdp("Target.attachToTarget", { targetId, flatten: true });
   await cdp("Runtime.enable", {}, sessionId);
   await cdp("Page.enable", {}, sessionId);
+  await cdp("Network.enable", {}, sessionId);
   await cdp(
     "Emulation.setDeviceMetricsOverride",
     { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false },
@@ -114,6 +124,27 @@ try {
     evaluate("!document.querySelector('form') && !!document.querySelector('canvas')", sessionId),
   );
   await sleep(600);
+  const beforeRight = inputs.length;
+  await cdp(
+    "Input.dispatchMouseEvent",
+    { type: "mousePressed", x: 900, y: 500, button: "right", buttons: 2, clickCount: 1 },
+    sessionId,
+  );
+  await until(() => inputs.slice(beforeRight).some((input) => input.boost === true));
+  assert.equal(
+    await evaluate(
+      "document.querySelector('canvas').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2}))",
+      sessionId,
+    ),
+    false,
+  );
+  const beforeRelease = inputs.length;
+  await cdp(
+    "Input.dispatchMouseEvent",
+    { type: "mouseReleased", x: 900, y: 500, button: "right", buttons: 0, clickCount: 1 },
+    sessionId,
+  );
+  await until(() => inputs.slice(beforeRelease).some((input) => input.boost === false));
   const game = await cdp("Page.captureScreenshot", { format: "png" }, sessionId);
   await writeFile("browser-game.png", Buffer.from(game.data, "base64"));
   const size = await evaluate(
@@ -166,7 +197,7 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real browser loads the menu, connects to the authoritative server, starts gameplay, renders a correctly sized canvas, and reports no JavaScript exceptions.",
+    "PASS: real browser joins the authority, renders gameplay, sends right-button boost and release, suppresses the context menu, and reports no JavaScript exceptions.",
   );
   console.log("Screenshots: browser-menu.png, browser-game.png");
 } finally {

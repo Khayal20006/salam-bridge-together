@@ -74,3 +74,10 @@ istifadə edir, ortaq kadrlar dəyişdirilmir. Son müqayisədə yeni ayrılan y
 təxminən 45%, yayım hazırlama p95 vaxtı 34% azaldı; hər iki kodlayıcının bütün
 paketləri eyni SHA-256 verdi. Böyük ilanın ölüm yemləri iri, kiçiyinki xırdadır;
 qalıqdan geri alınan böyümə məhdudlaşdırılıb. Normal böyümə və qalınlaşma saxlanıb.
+
+2026.11.03.9: istifadəçinin dəqiqləşdirdiyi boost titrəməsi üçün kamera sürətinin
+keçidi yumşaldıldı; normal sürət 156, boost 420 əvəzinə 320-dir. Sağ düymə ilə
+boost və buraxanda dayanması real brauzerdə yoxlanır, kontekst menyusu açılmır.
+Simulyasiyanın müvəqqəti axtarış yaddaşı təkrar istifadə olunur. Eyni sürət və
+yükdə yeni ayrılan yaddaş təxminən 41% azaldı, CPU p95 yaxşılaşması təsdiqlənmədi.
+Ortaq vəziyyət və paketlər müqayisədə eyni qaldı. 90 avtomatik test keçir.

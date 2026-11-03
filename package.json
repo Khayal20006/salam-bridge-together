@@ -20,6 +20,7 @@
     "test:arena": "node scripts/test-arena.mjs",
     "test:realtime": "node scripts/test-realtime-browser.mjs",
     "benchmark:arena": "node scripts/benchmark-arena.mjs",
+    "benchmark:simulation": "node --expose-gc scripts/benchmark-simulation.mjs",
     "benchmark:replication": "node --expose-gc scripts/benchmark-replication.mjs",
     "test:watch": "vitest"
   },

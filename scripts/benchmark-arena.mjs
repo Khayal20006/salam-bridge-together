@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { Arena } from "../src/game/engine.ts";
+const { Arena } = await import(process.env.BENCHMARK_ENGINE || "../src/game/engine.ts");
 import { packSnapshot } from "../src/game/protocol.ts";
 
 let seed = 42;

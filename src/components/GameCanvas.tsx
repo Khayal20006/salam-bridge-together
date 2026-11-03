@@ -16,6 +16,7 @@ import { snapshotIndex } from "@/game/snapshot-index";
 import { LocalPrediction } from "@/game/prediction";
 import { SnapshotPlayback } from "@/game/playback";
 import { drawSnakeSurface } from "@/game/snake-surface";
+import { SmoothCamera } from "@/game/camera";
 
 type Props = {
   room: string;
@@ -71,7 +72,7 @@ export default function GameCanvas(props: Props) {
     const prediction = new LocalPrediction();
     const playback = new SnapshotPlayback();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
-    const cam = { x: 0, y: 0, z: 0.8 };
+    const cam = new SmoothCamera();
     const steeringAngle = () => {
       const snake = rendered.get(self),
         head = snake?.pts[0];
@@ -129,8 +130,7 @@ export default function GameCanvas(props: Props) {
         playback.receive(state.tick, performance.now(), STEP_MS);
         const me = state.snakes.find((s) => s.id === self);
         if (me && resetCamera) {
-          cam.x = me.pts[0]!.x;
-          cam.y = me.pts[0]!.y;
+          cam.snap(me.pts[0]!.x, me.pts[0]!.y);
           resetCamera = false;
         }
         if (me) prediction.reconcile(me, performance.now());
@@ -189,7 +189,7 @@ export default function GameCanvas(props: Props) {
       if (active) prediction.steer(steeringAngle(), mouse.down);
     };
     const down = (e: PointerEvent) => {
-      if (e.target !== c || e.button !== 0) return;
+      if (e.target !== c || (e.button !== 0 && e.button !== 2)) return;
       move(e);
       mouse.down = true;
       sendInput(true);
@@ -197,6 +197,9 @@ export default function GameCanvas(props: Props) {
     const up = () => {
       mouse.down = false;
       sendInput(true);
+    };
+    const contextMenu = (event: MouseEvent) => {
+      if (active) event.preventDefault();
     };
     const keyboard = (e: KeyboardEvent) => {
       if (
@@ -236,6 +239,7 @@ export default function GameCanvas(props: Props) {
     addEventListener("pointerdown", down);
     addEventListener("pointerup", up);
     addEventListener("pointercancel", up);
+    c.addEventListener("contextmenu", contextMenu);
     addEventListener("blur", up);
     addEventListener("keydown", keyboard);
     addEventListener("keyup", keyboard);
@@ -311,11 +315,8 @@ export default function GameCanvas(props: Props) {
       const me = all.find((s) => s.id === self);
       if (me) {
         if (active) prediction.renderInto(me, now);
-        const head = me.pts[0]!,
-          k = 1 - Math.pow(0.85, dt);
-        cam.x += (head.x - cam.x) * k;
-        cam.y += (head.y - cam.y) * k;
-        cam.z += (Math.max(0.5, 1.15 - snakeWidth(me) / 70) - cam.z) * (1 - Math.pow(0.97, dt));
+        const head = me.pts[0]!;
+        cam.follow(head.x, head.y, Math.max(0.5, 1.15 - snakeWidth(me) / 70), dt * 16.667);
       }
       const vw = innerWidth / cam.z / 2 + 70,
         vh = innerHeight / cam.z / 2 + 70;
@@ -526,6 +527,7 @@ export default function GameCanvas(props: Props) {
       removeEventListener("pointerdown", down);
       removeEventListener("pointerup", up);
       removeEventListener("pointercancel", up);
+      c.removeEventListener("contextmenu", contextMenu);
       removeEventListener("blur", up);
       removeEventListener("keydown", keyboard);
       removeEventListener("keyup", keyboard);
