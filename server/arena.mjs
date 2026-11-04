@@ -4,7 +4,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createClient } from "@supabase/supabase-js";
 import { Arena, STEP_MS } from "../src/game/engine.ts";
 import { packSnapshot } from "../src/game/protocol.ts";
-import { snapshotForView } from "../src/game/view-snapshot.ts";
 import { SKIN_BY } from "../src/lib/skins.ts";
 
 try {
@@ -77,9 +76,6 @@ function send(peer, msg) {
   peer.ws.send(JSON.stringify(msg));
 }
 function state(room, peer, snapshot = room.arena.snapshot(), full = false) {
-  // Keep a per-peer food baseline so crossing the view boundary sends additions
-  // and removals without changing the authoritative world.
-  snapshot = snapshotForView(snapshot, peer.id, peer.radius);
   send(peer, {
     type: "state",
     count: room.peers.size,

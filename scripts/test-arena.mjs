@@ -79,7 +79,7 @@ try {
     b = connect("eu-1"),
     other = connect("eu-2");
   await until(() => a.id && b.id && other.id && a.last && b.last && other.last);
-  a.ws.send(JSON.stringify({ type: "join", name: "Alpha", skin: "hue" }));
+  a.ws.send(JSON.stringify({ type: "join", name: "Alpha", skin: "aurora" }));
   b.ws.send(JSON.stringify({ type: "join", name: "Beta", skin: "ice" }));
   let matched;
   await until(() => {
@@ -99,9 +99,7 @@ try {
   const heads = (state) =>
     state.snakes.map((s) => ({ id: s.id, head: s.pts[0], len: s.len, skin: s.skin, bot: s.bot }));
   assert.deepEqual(heads(matched[0]), heads(matched[1]));
-  const secondFoods = new Map(matched[1].foods.map(f => [f.id, f]));
-  for (const food of matched[0].foods)
-    if (secondFoods.has(food.id)) assert.deepEqual(food, secondFoods.get(food.id));
+  assert.deepEqual(matched[0].foods, matched[1].foods);
   assert.equal(matched[0].snakes.filter((s) => s.bot).length, 18);
   assert.ok(other.last.snakes.every((s) => s.id !== a.id && s.id !== b.id));
   // Malformed, forged-position and out-of-order commands must not corrupt either client.

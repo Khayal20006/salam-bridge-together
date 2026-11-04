@@ -9,9 +9,7 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 export default defineConfig({
   vite: {
     server: {
-      proxy: {
-        "/arena": { target: `ws://127.0.0.1:${process.env["ARENA_PORT"] || 8787}`, ws: true },
-      },
+      proxy: { "/arena": { target: "ws://127.0.0.1:8787", ws: true } },
     },
   },
   tanstackStart: {

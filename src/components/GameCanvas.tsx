@@ -1,14 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { SKIN_BY, SKINS } from "@/lib/skins";
-type GameConfig = {
-  quality: "low" | "medium" | "high";
-  grid: boolean;
-  glow: boolean;
-  boostFx: boolean;
-  names: boolean;
-  minimap: boolean;
-  showFps: boolean;
-};
+import type { GameConfig } from "@/lib/game-state";
 import { connectArena } from "@/game/connection";
 import {
   WORLD,
@@ -19,11 +11,11 @@ import {
   type Snake,
   type Snapshot,
 } from "@/game/engine";
-import { interpolateAngle } from "@/game/movement";
+import { interpolateAngle, smoothSpine } from "@/game/movement";
 import { snapshotIndex } from "@/game/snapshot-index";
 import { LocalPrediction } from "@/game/prediction";
 import { SnapshotPlayback } from "@/game/playback";
-import { drawClassicSnake } from "@/game/classic-surface";
+import { drawSnakeSurface } from "@/game/snake-surface";
 import { SmoothCamera } from "@/game/camera";
 import { nextPaintTime } from "@/game/frame-clock";
 
@@ -84,16 +76,19 @@ export default function GameCanvas(props: Props) {
       snakes: Map<string, Snake>;
     }[] = [];
     const rendered = new Map<string, Snake>();
+    const spines = new Map<string, Snake["pts"]>();
     const all: Snake[] = [];
     const prediction = new LocalPrediction();
     const playback = new SnapshotPlayback();
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = new SmoothCamera();
     const steeringAngle = () => {
-      const snake = rendered.get(self);
-      // Match classic controls: camera lag must not change the target angle.
-      const dx = mouse.x - innerWidth / 2,
-        dy = mouse.y - innerHeight / 2;
+      const snake = rendered.get(self),
+        head = snake?.pts[0];
+      const x = innerWidth / 2 + ((head?.x ?? cam.x) - cam.x) * cam.z;
+      const y = innerHeight / 2 + ((head?.y ?? cam.y) - cam.y) * cam.z;
+      const dx = mouse.x - x,
+        dy = mouse.y - y;
       const deadzone = snake ? snakeWidth(snake) * cam.z + 6 : 12;
       return dx * dx + dy * dy < deadzone * deadzone ? (snake?.angle ?? 0) : Math.atan2(dy, dx);
     };
@@ -122,6 +117,7 @@ export default function GameCanvas(props: Props) {
           wasAlive = false;
           history.length = 0;
           rendered.clear();
+          spines.clear();
           prediction.clear();
           playback.clear();
           resetCamera = true;
@@ -330,6 +326,7 @@ export default function GameCanvas(props: Props) {
       for (const key of rendered.keys())
         if (!currentIds?.has(key)) {
           rendered.delete(key);
+          spines.delete(key);
         }
       const me = all.find((s) => s.id === self);
       if (me) {
@@ -386,6 +383,10 @@ export default function GameCanvas(props: Props) {
       }
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      let visibleBodyPoints = 0;
+      for (const snake of all)
+        if (snake.pts.some((p) => Math.abs(p.x - cam.x) < vw && Math.abs(p.y - cam.y) < vh))
+          visibleBodyPoints += snake.pts.length;
       for (const s of all) {
         const head = s.pts[0]!,
           radius = snakeWidth(s);
@@ -397,19 +398,48 @@ export default function GameCanvas(props: Props) {
         )
           continue;
         const skin = SKIN_BY[s.skin] ?? SKINS[0]!;
-        const facing = s.angle;
-        drawClassicSnake(ctx, s, skin, now, cfg.boostFx, {
-          minX: cam.x - vw,
-          minY: cam.y - vh,
-          maxX: cam.x + vw,
-          maxY: cam.y + vh,
-        });
+        const divisions =
+          s.pts.length > 160 || visibleBodyPoints > 1200
+            ? 1
+            : quality === "low" || s.pts.length > 80 || visibleBodyPoints > 600
+              ? 2
+              : 4;
+        let points = spines.get(s.id);
+        if (!points) {
+          points = [];
+          spines.set(s.id, points);
+        }
+        smoothSpine(s.pts, points, divisions, s.angle);
+        const facing =
+          points.length > 1
+            ? Math.atan2(points[0]!.y - points[1]!.y, points[0]!.x - points[1]!.x)
+            : s.angle;
+        drawSnakeSurface(
+          ctx,
+          points,
+          radius,
+          skin,
+          s.hue,
+          now,
+          quality !== "high" || divisions === 1 || !active,
+          divisions,
+          s.boost && cfg.boostFx,
+        );
         if (isSpawnProtected(s, latest?.tick ?? 0)) {
           ctx.strokeStyle = "rgba(160,235,255,0.85)";
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(head.x, head.y, radius + 7, 0, Math.PI * 2);
           ctx.stroke();
+        }
+        if (skin.spark && cfg.boostFx && quality === "high") {
+          ctx.fillStyle = skin.spark;
+          for (let i = 0; i < 4; i++) {
+            const p = s.pts[Math.floor((now / 45 + (i * s.pts.length) / 4) % s.pts.length)]!;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         for (const side of [-1, 1]) {
           const x = head.x + Math.cos(facing + side * 0.6) * radius * 0.65,

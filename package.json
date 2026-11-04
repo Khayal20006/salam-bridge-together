@@ -3,18 +3,26 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:web": "vite dev",
+    "arena": "node server/arena.mjs",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "dev:web": "vite dev",
-    "arena": "node server/arena.mjs",
-    "test:arena": "node scripts/test-arena.mjs"
+    "test:arena": "node scripts/test-arena.mjs",
+    "test:realtime": "node scripts/test-realtime-browser.mjs",
+    "benchmark:arena": "node scripts/benchmark-arena.mjs",
+    "benchmark:simulation": "node --expose-gc scripts/benchmark-simulation.mjs",
+    "benchmark:replication": "node --expose-gc scripts/benchmark-replication.mjs",
+    "test:watch": "vitest"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -102,8 +110,5 @@
     "typescript-eslint": "^8.56.1",
     "vite": "8.1.5",
     "vitest": "^4.1.10"
-  },
-  "engines": {
-    "node": ">=24.0.0"
   }
 }

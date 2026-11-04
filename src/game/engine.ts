@@ -1,4 +1,4 @@
-import { followClassicBody } from "./classic-body.ts";
+import { BodyTrail, smoothTurn } from "./movement.ts";
 import { botGoal, botHeading, type BotMemory, type Obstacle } from "./bot-navigation.ts";
 import { SpatialGrid } from "./spatial-grid.ts";
 
@@ -8,13 +8,14 @@ export const SEG = 8;
 export const MAX_PLAYERS = 50;
 export const BOT_COUNT = 18;
 export const BASE_SPEED = 156;
-export const BOOST_SPEED = 420;
-export const SPAWN_PROTECTION_TICKS = 90;
+export const BOOST_SPEED = 320;
+export const SPAWN_PROTECTION_TICKS = 45;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 2.5;
-// Light visual contact is forgiven: only the inner 45% of each radius collides.
-const COLLISION_SCALE = 0.45;
+// A head may overlap 40% of the visual body before dying. The smaller hitbox
+// leaves a passable gap between two snakes, like slither.io.
+const COLLISION_SCALE = 0.6;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
@@ -61,21 +62,24 @@ export type Death = { id: string; len: number; tick: number };
 export type Snapshot = { tick: number; snakes: Snake[]; foods: Food[]; deaths: Death[] };
 export type Input = { seq: number; angle: number; boost: boolean };
 export const snakeWidth = (s: Pick<Snake, "len">) =>
-  7 + Math.min(34, Math.sqrt(Math.max(0, s.len)) * 1.15);
+  11 + Math.log2(1 + Math.max(0, s.len - 10) / 24) * 3.6;
 export const isSpawnProtected = (s: Pick<Snake, "spawnTick">, tick: number) =>
   s.spawnTick !== undefined && tick < s.spawnTick + SPAWN_PROTECTION_TICKS;
 export const segmentCount = (len: number) =>
-  Math.floor(10 + Math.min(230, Math.sqrt(Math.max(0, len - 10)) * 11.5));
+  Math.floor(10 + Math.min(230, Math.max(0, len - 10) * 1.1));
 export const cloneSnake = (s: Snake): Snake => ({ ...s, pts: s.pts.map((p) => ({ ...p })) });
 
 /** Shared visual/authoritative kinematics; food and collision decisions stay in Arena. */
 export function advanceHead(s: Snake, seconds: number): Point {
   s.boost = s.boost && s.len > 12;
   const speed = s.boost ? BOOST_SPEED : BASE_SPEED;
-  // The original Lovable turn rate: 0.09 radians per 60 Hz frame.
-  const delta = Math.atan2(Math.sin(s.target - s.angle), Math.cos(s.target - s.angle));
-  s.angle += Math.max(-5.4 * seconds, Math.min(5.4 * seconds, delta));
-  s.turnVelocity = 0;
+  const maxRate = Math.min(
+    TURN_RATE * (s.boost ? BOOST_TURN_MULTIPLIER : 1),
+    speed / (snakeWidth(s) * 1.6),
+  );
+  const steering = smoothTurn(s.angle, s.target, s.turnVelocity ?? 0, maxRate, seconds);
+  s.angle = steering.angle;
+  s.turnVelocity = steering.velocity;
   const head = s.pts[0]!;
   return {
     x: head.x + Math.cos(s.angle) * speed * seconds,
@@ -113,6 +117,7 @@ export class Arena {
   tick = 0;
   private foodId = 0;
   private inputs = new Map<string, number>();
+  private trails = new Map<string, BodyTrail>();
   private botMemory = new Map<string, BotMemory>();
   private foodSnapshots = new WeakMap<Food, Food>();
   private foodGrid = new SpatialGrid<Food>(120);
@@ -191,6 +196,7 @@ export class Arena {
         skin,
       };
       this.snakes.set(id, s);
+      this.trails.set(id, new BodyTrail(s.pts));
       this.inputs.delete(id);
       return s;
     }
@@ -204,6 +210,7 @@ export class Arena {
   leave(id: string): void {
     this.snakes.delete(id);
     this.inputs.delete(id);
+    this.trails.delete(id);
     this.botMemory.delete(id);
   }
   input(id: string, value: Input): void {
@@ -289,7 +296,12 @@ export class Arena {
         s.len = Math.max(10, s.len - 0.16);
         if (this.tick % 5 === 0) this.food({ ...s.pts.at(-1)! }, 0.5);
       }
-      s.pts = followClassicBody(nextHead, s.pts, segmentCount(s.len), SEG);
+      let trail = this.trails.get(s.id);
+      if (!trail) {
+        trail = new BodyTrail(s.pts);
+        this.trails.set(s.id, trail);
+      }
+      s.pts = trail.advance(nextHead, segmentCount(s.len), SEG);
     }
     // All deaths are decided from the same tick, then applied together.
     const dead = new Set<string>();
@@ -464,11 +476,13 @@ export class Arena {
     this.snakes.clear();
     this.foods.clear();
     this.inputs.clear();
+    this.trails.clear();
     this.botMemory.clear();
     this.foodSnapshots = new WeakMap();
     for (const s of snapshot.snakes) {
       this.snakes.set(s.id, cloneSnake(s));
       if (s.inputSeq !== undefined) this.inputs.set(s.id, s.inputSeq);
+      this.trails.set(s.id, new BodyTrail(s.pts));
     }
     this.foodId = 0;
     for (const f of snapshot.foods) {

@@ -152,7 +152,7 @@ export function packSnapshot(
   const full = !previous || current.tick % 30 === 0;
   const frame = packedFrame(current);
   const { foods, removed } = packedFood(current, full ? undefined : previous, frame);
-  const focus = view && (current.snakes.find((s) => s.id === view.id)?.pts[0] ?? { x: 0, y: 0 });
+  const focus = view && current.snakes.find((s) => s.id === view.id)?.pts[0];
   return {
     v: PROTOCOL,
     tick: current.tick,

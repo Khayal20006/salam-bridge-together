@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Snapshot } from "./engine";
-import { unpackSnapshot } from "./protocol";
+import { RealtimeConnection } from "./realtime";
+import { packSnapshot, unpackSnapshot } from "./protocol";
 
 export type ConnectionEvents = {
   snapshot: (state: Snapshot, selfId: string, world?: string) => void;
@@ -16,15 +17,12 @@ export interface ArenaConnection {
 }
 
 const validRoom = (room: string) => /^(eu-[1-4]|as-[1-2]|am-[1-2])$/.test(room);
-const HOSTED_ARENA_URL = "https://salam-bridge-together.onrender.com/arena";
 
 export function connectArena(room: string, events: ConnectionEvents): ArenaConnection {
   if (!validRoom(room)) throw new Error("Invalid room");
   const configured = import.meta.env["VITE_ARENA_URL"] as string | undefined;
-  // A hosted build can omit custom VITE_* values. It must still use the arena,
-  // rather than silently electing one of the players' browsers as the server.
-  const base = configured || (import.meta.env.DEV ? undefined : HOSTED_ARENA_URL);
-  return new SocketConnection(room, events, base);
+  if (configured || import.meta.env.DEV) return new SocketConnection(room, events, configured);
+  return new RealtimeConnection(room, events);
 }
 
 class SocketConnection implements ArenaConnection {
