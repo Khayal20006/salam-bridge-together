@@ -32,8 +32,8 @@ it("kills only the head that hits a body, and a later impact with its dead owner
   const dead = new Set<string>();
   resolveContacts(
     [
-      { time: 0.7, victim: "cutter", obstacle: "follower", both: true },
-      { time: 0.2, victim: "follower", obstacle: "cutter", both: false },
+      { time: 0.7, victim: "cutter", obstacle: "follower" },
+      { time: 0.2, victim: "follower", obstacle: "cutter" },
     ],
     dead,
   );
@@ -41,8 +41,8 @@ it("kills only the head that hits a body, and a later impact with its dead owner
 });
 it("resolves genuinely simultaneous impacts independently of insertion order", () => {
   const contacts = [
-    { time: 0.5, victim: "a", obstacle: "b", both: false },
-    { time: 0.5, victim: "b", obstacle: "a", both: false },
+    { time: 0.5, victim: "a", obstacle: "b" },
+    { time: 0.5, victim: "b", obstacle: "a" },
   ];
   const a = new Set<string>(),
     b = new Set<string>();
@@ -80,4 +80,96 @@ it("a player cutting across an opponent survives while the opponent dies and dro
     expect(arena.deaths.map((d) => d.id)).toEqual(["follower"]);
     expect([...arena.foods.values()].some((f) => Math.abs(f.x) < 0.001 && f.y < 0)).toBe(true);
   }
+});
+
+it("a head-side cut kills the approaching head, not both overlapping head circles", () => {
+  for (const reversed of [false, true]) {
+    const arena = new Arena(() => 0.25, false);
+    arena.tick = 100;
+    const make = (id: string, x: number, y: number, angle: number): Snake => ({
+      id,
+      name: id,
+      skin: "hue",
+      spawnTick: 0,
+      len: 10,
+      hue: 0,
+      angle,
+      target: angle,
+      bot: false,
+      boost: false,
+      pts: Array.from({ length: 10 }, (_, i) =>
+        p(x - Math.cos(angle) * i * 8, y - Math.sin(angle) * i * 8),
+      ),
+    });
+    const cutter = make("cutter", 0, 0, 0),
+      approaching = make("approaching", 6, -10, Math.PI / 2);
+    for (const s of reversed ? [approaching, cutter] : [cutter, approaching])
+      arena.snakes.set(s.id, s);
+    arena.step();
+    expect(arena.snakes.has("cutter")).toBe(true);
+    expect(arena.snakes.has("approaching")).toBe(false);
+  }
+});
+import { snakeWidth } from "./engine";
+it("cutting in front wins for either size and for players or bots", () => {
+  for (const [cutterLength, followerLength] of [
+    [10, 100],
+    [100, 10],
+  ]) {
+    for (const bot of [false, true]) {
+      const arena = new Arena(() => 0.25, false);
+      arena.tick = 100;
+      const make = (id: string, x: number, y: number, angle: number, len: number): Snake => ({
+        id,
+        name: id,
+        skin: "hue",
+        spawnTick: 0,
+        len,
+        hue: 0,
+        angle,
+        target: angle,
+        bot: false,
+        boost: false,
+        pts: Array.from({ length: 10 }, (_, i) =>
+          p(x - Math.cos(angle) * i * 8, y - Math.sin(angle) * i * 8),
+        ),
+      });
+      const cutter = make("cutter", 40, 0, 0, cutterLength!);
+      const gap = (snakeWidth(cutter) + snakeWidth({ len: followerLength! })) * 0.8 + 4;
+      const follower = make("follower", 0, -gap, Math.PI / 2, followerLength!);
+      follower.bot = bot;
+      arena.snakes.set(cutter.id, cutter);
+      arena.snakes.set(follower.id, follower);
+      arena.step();
+      expect(arena.snakes.has("cutter")).toBe(true);
+      expect(arena.snakes.has("follower")).toBe(false);
+    }
+  }
+});
+it("an exact symmetric frontal crash checks both noses rather than choosing by ID", () => {
+  const arena = new Arena(() => 0.25, false);
+  arena.tick = 100;
+  for (const [id, x, angle] of [
+    ["a", -12, 0],
+    ["b", 12, Math.PI],
+  ] as const) {
+    arena.snakes.set(id, {
+      id,
+      name: id,
+      skin: "hue",
+      spawnTick: 0,
+      len: 10,
+      hue: 0,
+      angle,
+      target: angle,
+      bot: false,
+      boost: false,
+      pts: Array.from({ length: 10 }, (_, i) =>
+        p(x - Math.cos(angle) * i * 8, -Math.sin(angle) * i * 8),
+      ),
+    });
+  }
+  arena.step();
+  expect(arena.snakes.has("a")).toBe(false);
+  expect(arena.snakes.has("b")).toBe(false);
 });

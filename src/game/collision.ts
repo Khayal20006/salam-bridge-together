@@ -38,7 +38,7 @@ export function contactTime(
   }
   return Infinity;
 }
-export type Contact = { time: number; victim: string; obstacle: string; both: boolean };
+export type Contact = { time: number; victim: string; obstacle: string };
 /** Resolve earlier impacts first. A snake already killed cannot kill its cutter later. */
 export function resolveContacts(contacts: Contact[], dead: Set<string>): void {
   contacts.sort((a, b) => a.time - b.time);
@@ -50,7 +50,6 @@ export function resolveContacts(contacts: Contact[], dead: Set<string>): void {
       const hit = contacts[i++]!;
       if (!dead.has(hit.victim) && !dead.has(hit.obstacle)) {
         simultaneous.add(hit.victim);
-        if (hit.both) simultaneous.add(hit.obstacle);
       }
     } while (i < contacts.length && contacts[i]!.time - time < 0.00001);
     for (const id of simultaneous) dead.add(id);

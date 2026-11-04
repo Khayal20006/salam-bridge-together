@@ -14,8 +14,11 @@ export const SPAWN_PROTECTION_TICKS = 90;
 const TURN_RATE = 8.4;
 const BOOST_TURN_MULTIPLIER = 1.2;
 const FOOD_GROWTH_MULTIPLIER = 2.5;
-// Light visual contact is forgiven: only the inner 45% of each radius collides.
-const COLLISION_SCALE = 0.45;
+// A small forward contact point is vulnerable; the sides of the head are body.
+// Keep a margin inside the painted stroke so glow/light edge contact is harmless.
+const BODY_COLLISION_SCALE = 0.8;
+const NOSE_OFFSET_SCALE = 0.8;
+const NOSE_RADIUS = 1;
 const FOOD_PULL_PER_TICK = 1 - Math.pow(0.88, STEP_MS / (1000 / 60));
 const FOOD_TARGET = 1000,
   FOOD_LIMIT = 1800;
@@ -127,7 +130,8 @@ export class Arena {
   private navigationBodies: Obstacle[] = [];
   private collisionBodies: MovingBody[] = [];
   private previousBodies = new Map<string, Point[]>();
-  private previousHeads = new Map<string, Point>();
+  private previousNoses = new Map<string, Point>();
+  private currentNose: Point = { x: 0, y: 0 };
   private collisionWidths = new Map<string, number>();
   private random: () => number;
   constructor(random: () => number = Math.random, initialize = true) {
@@ -231,7 +235,7 @@ export class Arena {
   }
   step(): void {
     this.tick++;
-    const previous = this.previousHeads;
+    const previous = this.previousNoses;
     previous.clear();
     this.previousBodies.clear();
     const foodGrid = this.foodGrid;
@@ -266,7 +270,10 @@ export class Arena {
     }
     for (const s of this.snakes.values()) {
       const head = s.pts[0]!;
-      previous.set(s.id, head);
+      previous.set(s.id, {
+        x: head.x + Math.cos(s.angle) * snakeWidth(s) * NOSE_OFFSET_SCALE,
+        y: head.y + Math.sin(s.angle) * snakeWidth(s) * NOSE_OFFSET_SCALE,
+      });
       this.previousBodies.set(s.id, s.pts);
       if (s.bot && navigation) {
         const nearbyFood = foodGrid.query(
@@ -306,8 +313,8 @@ export class Arena {
       const width = snakeWidth(s);
       widths.set(s.id, width);
       if (isSpawnProtected(s, this.tick)) continue;
-      const radius = width * COLLISION_SCALE;
-      for (let i = 2; i < s.pts.length; i++) {
+      const radius = width * BODY_COLLISION_SCALE;
+      for (let i = 1; i < s.pts.length; i++) {
         const a = s.pts[i - 1]!,
           b = s.pts[i]!;
         const oldPoints = this.previousBodies.get(s.id)!;
@@ -333,36 +340,18 @@ export class Arena {
       }
     }
     const snakes = [...this.snakes.values()];
-    for (let i = 0; i < snakes.length; i++) {
-      const s = snakes[i]!,
-        head = s.pts[0]!,
-        old = previous.get(s.id)!,
-        radius = widths.get(s.id)! * COLLISION_SCALE;
+    for (const s of snakes) {
+      const head = s.pts[0]!;
       if (Math.hypot(head.x, head.y) + widths.get(s.id)! >= WORLD) dead.add(s.id);
-      if (isSpawnProtected(s, this.tick)) continue;
-      for (let j = i + 1; j < snakes.length; j++) {
-        const other = snakes[j]!,
-          a = previous.get(other.id)!,
-          b = other.pts[0]!;
-        if (isSpawnProtected(other, this.tick)) continue;
-        const time = contactTime(
-          old,
-          head,
-          a,
-          b,
-          a,
-          b,
-          radius + widths.get(other.id)! * COLLISION_SCALE,
-        );
-        if (Number.isFinite(time))
-          contacts.push({ time, victim: s.id, obstacle: other.id, both: true });
-      }
     }
     for (const s of snakes) {
       if (dead.has(s.id) || isSpawnProtected(s, this.tick)) continue;
-      const head = s.pts[0]!,
+      const center = s.pts[0]!,
         old = previous.get(s.id)!,
-        radius = widths.get(s.id)! * COLLISION_SCALE;
+        radius = NOSE_RADIUS;
+      const head = this.currentNose;
+      head.x = center.x + Math.cos(s.angle) * widths.get(s.id)! * NOSE_OFFSET_SCALE;
+      head.y = center.y + Math.sin(s.angle) * widths.get(s.id)! * NOSE_OFFSET_SCALE;
       for (const body of bodies.query(
         Math.min(old.x, head.x) - radius,
         Math.min(old.y, head.y) - radius,
@@ -380,8 +369,7 @@ export class Arena {
           body.b,
           radius + body.radius,
         );
-        if (Number.isFinite(time))
-          contacts.push({ time, victim: s.id, obstacle: body.id, both: false });
+        if (Number.isFinite(time)) contacts.push({ time, victim: s.id, obstacle: body.id });
       }
     }
     resolveContacts(contacts, dead);
