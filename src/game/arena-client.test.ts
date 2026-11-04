@@ -80,3 +80,67 @@ it("falls back after a silent handshake, preserves pending join and shuts down a
   expect(LocalWorker.instances[0]!.terminated).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
 });
+const frame = (tick = 0) => ({
+  type: "state",
+  count: 2,
+  state: { v: 2, tick, base: null, snakes: [], foods: [], removed: [], deaths: [] },
+});
+const deliver = (socket: Socket, message: unknown) =>
+  socket.onmessage?.({ data: JSON.stringify(message) });
+it("rejoins the shared server after fallback and switches only on a valid snapshot", () => {
+  const e = events(),
+    c = new ArenaClient("eu-1", e, "ws://localhost/arena");
+  c.play("Player", "hue");
+  const old = Socket.instances[0]!;
+  old.close();
+  expect(e.mode).toHaveBeenLastCalledWith("offline");
+  const worker = LocalWorker.instances[0]!;
+  vi.advanceTimersByTime(1000);
+  const next = Socket.instances[1]!;
+  deliver(next, { type: "hello", id: "remote-1" });
+  expect(next.sent.map((x) => JSON.parse(x)).filter((x) => x.type === "join")).toEqual([
+    { type: "join", name: "Player", skin: "hue" },
+  ]);
+  deliver(next, { type: "state", state: { broken: true } });
+  expect(worker.terminated).toBe(false);
+  expect(e.mode).toHaveBeenLastCalledWith("offline");
+  deliver(next, frame());
+  expect(worker.terminated).toBe(true);
+  expect(e.mode).toHaveBeenLastCalledWith("online");
+  expect(e.count).toHaveBeenLastCalledWith(2);
+  e.state.mockClear();
+  deliver(old, frame(99));
+  expect(e.state).not.toHaveBeenCalled();
+  c.input(0.5, true, 1600);
+  expect(JSON.parse(next.sent.at(-1)!)).toMatchObject({ type: "input", angle: 0.5, boost: true });
+  c.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+it("retries a stalled connection while offline instead of remaining isolated forever", () => {
+  const e = events(),
+    c = new ArenaClient("eu-1", e, "ws://localhost/arena");
+  Socket.instances[0]!.close();
+  vi.advanceTimersByTime(49000);
+  expect(Socket.instances.length).toBeGreaterThanOrEqual(3);
+  expect(LocalWorker.instances).toHaveLength(1);
+  c.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+it("does not let delayed worker messages replace an online shared world", () => {
+  const e = events(),
+    c = new ArenaClient("eu-1", e, "ws://localhost/arena");
+  Socket.instances[0]!.close();
+  const worker = LocalWorker.instances[0]! as LocalWorker & {
+    onmessage: (event: { data: unknown }) => void;
+  };
+  vi.advanceTimersByTime(1000);
+  const next = Socket.instances[1]!;
+  deliver(next, { type: "hello", id: "remote-1" });
+  deliver(next, frame());
+  e.state.mockClear();
+  worker.onmessage({
+    data: { id: "offline-player", state: { tick: 5, snakes: [], deaths: [], foods: [] } },
+  });
+  expect(e.state).not.toHaveBeenCalled();
+  c.close();
+});
