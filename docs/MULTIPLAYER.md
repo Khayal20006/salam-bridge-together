@@ -98,6 +98,32 @@ the boundary, so a body behind it cannot repeatedly reverse its direction. A bot
 that makes little progress over three seconds temporarily chooses a distant goal.
 Bot decisions run only in the authority and use the shared collision engine.
 
+## Hosted transport: 2026.11.04.1
+
+The live frontend at commit `fc0fd8f` omitted `VITE_ARENA_URL` from its built
+environment, despite the value being present in `.env.production`. A real-browser
+check opened only the Supabase relay, and the published game bundle contained no
+Render hostname. This silently selected browser-hosted simulation when a second
+player joined. A source deployment alone did not activate the Render arena.
+
+Hosted builds now default to `https://salam-bridge-together.onrender.com/arena`
+even when the custom build variable is missing. An explicit `VITE_ARENA_URL`
+still overrides that address; development keeps its same-origin local proxy.
+Arena connection failures retry the arena and never switch to browser authority.
+The old relay implementation remains available to its isolated legacy tests.
+
+A direct live Render probe with two players received snapshots about every
+100 ms: p95 115.5 ms, maximum 165.4 ms in an 18-second two-player sample, with no
+gap above 200 ms. This is a short diagnostic, not a production capacity guarantee.
+Validation: 109 unit tests, TypeScript, ESLint and the real WebSocket integration
+test passed. A production build with `VITE_ARENA_URL` explicitly empty was served
+locally in two separate native browser windows. Both opened Render arena sockets
+and received matching player heads at the same tick. During the two-player sample,
+frame p95 was 16.7 ms and snapshot-gap p95 was 113.2 ms, with no JavaScript errors.
+These are local headless desktop measurements, not a physical-device FPS guarantee.
+After publishing, verify a WebSocket to the Render `/arena/<room>` endpoint;
+the frontend version is `2026.11.04.1`.
+
 ## Publishing the frontend
 
 A GitHub push synchronizes source into the Lovable editor. It does not prove that
