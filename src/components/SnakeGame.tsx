@@ -1,5 +1,6 @@
 // @ts-nocheck -- performance-critical canvas loop with array indexing
 import { useEffect, useRef, useState } from "react";
+import GameCanvas from "./GameCanvas";
 import { supabase } from "@/integrations/supabase/client";
 import { SKINS, SKIN_BY, coinsFor } from "@/lib/skins";
 import { lovable } from "@/integrations/lovable/index";
@@ -12,29 +13,11 @@ const REGIONS = {
 } as const;
 const ROOM_MAX = 50;
 
-type P = { x: number; y: number };
-type Snake = {
-  id: number; name: string; pts: P[]; angle: number; target: number;
-  len: number; hue: number; alive: boolean; bot: boolean; boost: boolean; think: number; remote?: boolean; skin?: string; seen?: number; tgt?: P[];
-};
-type Food = { x: number; y: number; r: number; hue: number; v: number; dead?: boolean };
-
-const WORLD = 3000, SEG = 8, SPEED = 2.6, BOOST = 7.0, TURN = 0.09;
-const NAMES = ["Nağı", "Leyla", "Viper", "Kobra", "Aysel", "Orxan", "Neon", "Zəhra", "Shadow", "Murad", "Toxic", "Elvin", "Rəşad", "Nova", "Fidan", "Blitz", "Kamran", "Ruby"];
-
-// growth goes mostly into thickness; body length (segment count) grows slowly and is capped
-const width = (s: Snake) => 7 + Math.min(34, Math.sqrt(s.len) * 1.15);
-const segCount = (len: number) => Math.floor(10 + Math.min(230, Math.sqrt(Math.max(0, len - 10)) * 11.5));
-const rnd = (a: number, b: number) => a + Math.random() * (b - a);
-function randPos(): P { const a = rnd(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (WORLD - 200); return { x: Math.cos(a) * r, y: Math.sin(a) * r }; }
-
 type Cfg = { quality: "low" | "medium" | "high"; grid: boolean; glow: boolean; boostFx: boolean; names: boolean; minimap: boolean; showFps: boolean };
 const DEF: Cfg = { quality: "medium", grid: true, glow: true, boostFx: true, names: true, minimap: true, showFps: false };
-const QCAP = { low: 0.75, medium: 1, high: 1.5 };
-const FOODC = Array.from({ length: 24 }, (_, i) => `hsl(${i * 15},100%,65%)`);
 
 export default function SnakeGame() {
-  const cvs = useRef<HTMLCanvasElement>(null);
+  const [connectionStatus, setConnectionStatus] = useState("connecting");
   const [state, setState] = useState<"menu" | "play" | "dead">("menu");
   const [name, setName] = useState("");
   const [score, setScore] = useState(0);
@@ -119,312 +102,6 @@ export default function SnakeGame() {
     return () => { supabase.removeChannel(lb); };
   }, [room]);
 
-  useEffect(() => {
-    const c = cvs.current!; const ctx = c.getContext("2d")!;
-    let raf = 0, idc = 1, playing = false, fpsN = 0, fpsT = 0;
-    let snakes: Snake[] = []; let foods: Food[] = []; let me: Snake | null = null;
-    const mouse = { x: 0, y: 0, down: false };
-    const cam = { x: 0, y: 0, z: 1 };
-    const css = getComputedStyle(document.documentElement);
-    const bg = css.getPropertyValue("--game-bg").trim() || "#0b0f1a";
-
-    const dpr = () => Math.min(QCAP[cfgRef.current.quality], devicePixelRatio || 1);
-    const resize = () => { const d = dpr(); c.width = innerWidth * d; c.height = innerHeight * d; c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; };
-    resize(); addEventListener("resize", resize);
-
-    const mk = (nm: string, bot: boolean): Snake => {
-      const p = randPos(), a = rnd(0, 6.28);
-      const pts = Array.from({ length: 12 }, (_, i) => ({ x: p.x - Math.cos(a) * i * SEG, y: p.y - Math.sin(a) * i * SEG }));
-      return { id: idc++, name: nm, pts, angle: a, target: a, len: bot ? rnd(10, 45) : 10, hue: rnd(0, 360), alive: true, bot, boost: false, think: 0, skin: bot && Math.random() < 0.5 ? SKINS[1 + Math.floor(Math.random() * (SKINS.length - 1))].id : "hue" };
-    };
-    // pre-rendered glowing food sprites (one per hue bucket) -> drawImage is far cheaper than arcs + string colors
-    const SPR = Array.from({ length: 24 }, (_, i) => {
-      const s = document.createElement("canvas"); s.width = s.height = 64; const g = s.getContext("2d")!;
-      const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, `hsla(${i * 15},100%,85%,1)`); gr.addColorStop(0.32, `hsla(${i * 15},100%,65%,1)`);
-      gr.addColorStop(0.42, `hsla(${i * 15},100%,60%,0.35)`); gr.addColorStop(1, `hsla(${i * 15},100%,60%,0)`);
-      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return s;
-    });
-    // cached name labels (emoji text rendering is slow)
-    const labels = new Map<string, HTMLCanvasElement>();
-    const label = (txt: string, color: string) => {
-      const key = color + txt; let l = labels.get(key);
-      if (!l) {
-        l = document.createElement("canvas"); const g = l.getContext("2d")!; g.font = "600 13px Space Grotesk, sans-serif";
-        const w = Math.ceil(g.measureText(txt).width) + 8; l.width = w * 2; l.height = 40;
-        const g2 = l.getContext("2d")!; g2.scale(2, 2); g2.font = "600 13px Space Grotesk, sans-serif"; g2.fillStyle = color; g2.textBaseline = "middle"; g2.fillText(txt, 4, 10);
-        labels.set(key, l); if (labels.size > 200) labels.delete(labels.keys().next().value);
-      }
-      return l;
-    };
-    const MAX_FOOD = 1300;
-    const CELL = 120, GN = Math.ceil((WORLD * 2 + 400) / CELL);
-    const gc = (v: number) => Math.max(0, Math.min(GN - 1, ((v + WORLD + 200) / CELL) | 0));
-    const grid: Food[][] = Array.from({ length: GN * GN }, () => []); const used: number[] = [];
-    const addFood = (x?: number, y?: number, v = 1) => {
-      const p = x === undefined ? randPos() : { x: x + rnd(-10, 10), y: y! + rnd(-10, 10) };
-      const f = { ...p, r: 3 + Math.min(v, 4) * 2, hue: Math.floor(rnd(0, 24)), v };
-      if (foods.length >= MAX_FOOD) foods[Math.floor(Math.random() * foods.length)] = f; else foods.push(f);
-    };
-    const init = () => {
-      snakes = []; foods = [];
-      for (let i = 0; i < 900; i++) addFood(undefined, undefined, 0.3);
-      for (let i = 0; i < 18; i++) snakes.push(mk(NAMES[i % NAMES.length], true));
-    };
-    init();
-
-    // --- multiplayer (realtime broadcast) ---
-    const myKey = Math.random().toString(36).slice(2, 10);
-    const remotes = new Map<string, Snake>();
-    const ch = supabase.channel("neon-arena-" + room, { config: { broadcast: { self: false }, presence: { key: myKey } } });
-    ch.on("broadcast", { event: "s" }, ({ payload: m }) => {
-      let r = remotes.get(m.k);
-      const pts: P[] = []; for (let i = 0; i < m.p.length; i += 2) pts.push({ x: m.p[i], y: m.p[i + 1] });
-      if (!r) { r = { id: -1, name: m.n, pts, angle: m.a, target: m.a, len: m.l, hue: m.h, alive: true, bot: false, boost: m.b, think: 0, remote: true }; remotes.set(m.k, r); }
-      r.name = m.n;
-      if (!r.tgt || Math.abs(r.pts.length - pts.length) > 4) r.pts = pts.map((q) => ({ ...q }));
-      else { while (r.pts.length < pts.length) r.pts.push({ ...r.pts[r.pts.length - 1] }); r.pts.length = pts.length; }
-      r.tgt = pts; r.angle = m.a; r.len = m.l; r.hue = m.h; r.boost = m.b; r.skin = m.sk; r.seen = performance.now();
-    });
-    ch.on("broadcast", { event: "d" }, ({ payload: m }) => {
-      const r = remotes.get(m.k); if (!r) return;
-      for (let i = 0; i < r.pts.length; i++) addFood(r.pts[i].x, r.pts[i].y, 2.5 + Math.min(6, r.len / 40));
-      remotes.delete(m.k);
-    });
-    ch.on("presence", { event: "sync" }, () => setOnline(Object.keys(ch.presenceState()).length || 1));
-    ch.subscribe((st) => { if (st === "SUBSCRIBED") ch.track({ at: Date.now() }); });
-    let sendT = 0;
-
-    startRef.current = () => {
-      me = mk(nameRef.current.trim() || "Sən", false); me.hue = 150; me.skin = skinRef.current; snakes.push(me); playing = true; setScore(10); setState("play");
-    };
-
-    const kill = (s: Snake) => {
-      s.alive = false;
-      const fv = Math.min(8, Math.max(2, (s.len * 1.0) / Math.max(1, s.pts.length / 2)));
-      for (let i = 0; i < s.pts.length; i += 2) addFood(s.pts[i].x, s.pts[i].y, fv);
-      if (s === me) {
-        playing = false; ch.send({ type: "broadcast", event: "d", payload: { k: myKey } });
-        const n = coinsRef.current + coinsFor(s.len);
-        // UI update runs after this frame so the death moment never stalls the render
-        setTimeout(() => { setCoins(n); setState("dead"); persistRef.current(n, ownedRef.current, skinRef.current); }, 0);
-      }
-    };
-
-    const onMove = (e: PointerEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
-    const onDown = () => (mouse.down = true), onUp = () => (mouse.down = false);
-    const onKey = (e: KeyboardEvent) => { if (e.code === "Space") mouse.down = e.type === "keydown"; };
-    addEventListener("pointermove", onMove); addEventListener("pointerdown", onDown); addEventListener("pointerup", onUp);
-    addEventListener("keydown", onKey); addEventListener("keyup", onKey);
-
-    let last = performance.now(), hudT = 0, lbT = 0;
-    const lb = document.createElement("canvas");
-    const loop = (now: number) => {
-      const dt = Math.min(3, (now - last) / 16.67); last = now;
-      for (const [k, r] of remotes) if (now - (r.seen || 0) > 2500) remotes.delete(k);
-      // smooth remote players: predict forward + interpolate
-      for (const r of remotes.values()) {
-        if (!r.tgt) continue;
-        const age = Math.min(0.2, (now - (r.seen || now)) / 1000);
-        const sp = (r.boost ? BOOST : SPEED) * 60 * age;
-        const ox = Math.cos(r.angle) * sp, oy = Math.sin(r.angle) * sp;
-        const k = 1 - Math.pow(0.6, dt);
-        for (let i = 0; i < r.pts.length; i++) {
-          const t = r.tgt[i] || r.tgt[r.tgt.length - 1], f = 1 - i / r.pts.length;
-          r.pts[i].x += (t.x + ox * f - r.pts[i].x) * k; r.pts[i].y += (t.y + oy * f - r.pts[i].y) * k;
-        }
-      }
-      let all = [...snakes, ...remotes.values()];
-      // control
-      for (const s of snakes) {
-        if (!s.alive) continue;
-        const h = s.pts[0];
-        if (s === me) {
-          s.target = Math.atan2(mouse.y - innerHeight / 2, mouse.x - innerWidth / 2);
-          s.boost = mouse.down && s.len > 12;
-        } else if ((s.think -= dt) <= 0) {
-          s.think = rnd(8, 20);
-          let best: Food | null = null, bd = 1e9;
-          for (const f of foods) { const d = (f.x - h.x) ** 2 + (f.y - h.y) ** 2; if (d < bd && d < 160000) { bd = d; best = f; } }
-          s.target = best ? Math.atan2(best.y - h.y, best.x - h.x) : s.target + rnd(-1, 1);
-          // avoid others
-          for (const o of all) {
-            if (o === s || !o.alive) continue;
-            for (let i = 0; i < o.pts.length; i += 3) {
-              const p = o.pts[i]; const d = (p.x - h.x) ** 2 + (p.y - h.y) ** 2;
-              if (d < 6400) { s.target = Math.atan2(h.y - p.y, h.x - p.x); break; }
-            }
-          }
-          if (Math.hypot(h.x, h.y) > WORLD - 250) s.target = Math.atan2(-h.y, -h.x);
-          s.boost = Math.random() < 0.08 && s.len > 40;
-        }
-        let d = s.target - s.angle; d = Math.atan2(Math.sin(d), Math.cos(d));
-        s.angle += Math.max(-TURN, Math.min(TURN, d)) * dt;
-        const sp = (s.boost ? BOOST : SPEED) * dt;
-        if (s.boost) { s.len -= 0.08 * dt; if (Math.random() < 0.15) { const t = s.pts[s.pts.length - 1]; addFood(t.x, t.y, 0.5); } }
-        const nh = { x: h.x + Math.cos(s.angle) * sp, y: h.y + Math.sin(s.angle) * sp };
-        s.pts[0] = nh;
-        for (let i = 1; i < s.pts.length; i++) {
-          const a = s.pts[i - 1], b = s.pts[i]; const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
-          if (l > SEG) { b.x = a.x + (dx / l) * SEG; b.y = a.y + (dy / l) * SEG; }
-        }
-        const want = segCount(s.len);
-        while (s.pts.length < want) s.pts.push({ ...s.pts[s.pts.length - 1] });
-        while (s.pts.length > want && s.pts.length > 10) s.pts.pop();
-        if (Math.hypot(nh.x, nh.y) > WORLD) kill(s);
-      }
-      // eat — food is bucketed into a spatial grid so each snake only checks nearby cells
-      for (let i = 0; i < used.length; i++) grid[used[i]].length = 0; used.length = 0;
-      for (let i = 0; i < foods.length; i++) { const f = foods[i]; const k = gc(f.y) * GN + gc(f.x); const cell = grid[k]; if (!cell.length) used.push(k); cell.push(f); }
-      let ate = false;
-      for (const s of snakes) {
-        if (!s.alive) continue; const h = s.pts[0], r = width(s) + 14, r2 = r * r, R = r * 3, R2 = R * R, gain = s.bot ? 0.7 : 1;
-        const x0 = gc(h.x - R), x1 = gc(h.x + R), y0 = gc(h.y - R), y1 = gc(h.y + R);
-        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
-          const cell = grid[gy * GN + gx];
-          for (let i = 0; i < cell.length; i++) {
-            const f = cell[i]; if (f.dead) continue; const dx = f.x - h.x, dy = f.y - h.y; const d = dx * dx + dy * dy;
-            if (d < r2) { s.len += f.v * gain; f.dead = true; ate = true; }
-            else if (d < R2) { f.x -= dx * 0.12; f.y -= dy * 0.12; }
-          }
-        }
-      }
-      if (ate) { let j = 0; for (let i = 0; i < foods.length; i++) if (!foods[i].dead) foods[j++] = foods[i]; foods.length = j; }
-      // collide — bounding box per snake rejects far snakes instantly, then every 2nd point is enough
-      for (const o of all) {
-        let ax = 1e9, ay = 1e9, bx = -1e9, by = -1e9; const ps = o.pts;
-        for (let i = 0; i < ps.length; i++) { const p = ps[i]; if (p.x < ax) ax = p.x; if (p.x > bx) bx = p.x; if (p.y < ay) ay = p.y; if (p.y > by) by = p.y; }
-        o.bb = [ax, ay, bx, by];
-      }
-      for (const s of snakes) {
-        if (!s.alive) continue; const h = s.pts[0], w = width(s);
-        for (const o of all) {
-          if (o === s || !o.alive) continue; const ow = width(o), Rr = w * 0.6 + ow, Rr2 = Rr * Rr, b = o.bb;
-          if (h.x < b[0] - Rr || h.x > b[2] + Rr || h.y < b[1] - Rr || h.y > b[3] + Rr) continue;
-          const ps = o.pts, st = Rr > SEG * 1.2 ? 2 : 1;
-          for (let i = 1; i < ps.length; i += st) {
-            const p = ps[i], dx = p.x - h.x, dy = p.y - h.y; if (dx * dx + dy * dy < Rr2) { kill(s); break; }
-          }
-          if (!s.alive) break;
-        }
-      }
-      snakes = snakes.filter((s) => s.alive);
-      all = [...snakes, ...remotes.values()];
-      if (me && me.alive && (sendT += dt) > 3) {
-        sendT = 0; const p: number[] = [];
-        for (let i = 0; i < me.pts.length; i += 2) p.push(Math.round(me.pts[i].x), Math.round(me.pts[i].y));
-        ch.send({ type: "broadcast", event: "s", payload: { k: myKey, n: me.name, h: me.hue, l: me.len, a: +me.angle.toFixed(2), b: me.boost, sk: me.skin, p } });
-      }
-      while (snakes.filter((s) => s.bot).length < 18) snakes.push(mk(NAMES[Math.floor(rnd(0, NAMES.length))], true));
-      while (foods.length < 900) addFood(undefined, undefined, 0.3);
-
-      // camera
-      const focus = me && me.alive ? me.pts[0] : cam;
-      cam.x += (focus.x - cam.x) * 0.15; cam.y += (focus.y - cam.y) * 0.15;
-      const tz = me && me.alive ? Math.max(0.5, 1.15 - width(me) / 70) : 0.7; cam.z += (tz - cam.z) * 0.03;
-
-      // draw
-      const C = cfgRef.current; const d = dpr();
-      if (c.width !== Math.round(innerWidth * d)) resize();
-      fpsN++; fpsT += dt; if (fpsT >= 30) { if (C.showFps) setFps(Math.round(fpsN * 60 / fpsT)); fpsN = 0; fpsT = 0; }
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.setTransform(d * cam.z, 0, 0, d * cam.z, (innerWidth / 2) * d - cam.x * cam.z * d, (innerHeight / 2) * d - cam.y * cam.z * d);
-      const vw = innerWidth / cam.z / 2 + 60, vh = innerHeight / cam.z / 2 + 60;
-      // hex grid
-      ctx.strokeStyle = "rgba(120,160,255,0.06)"; ctx.lineWidth = 2; const g = 60;
-      if (C.grid) { ctx.beginPath();
-      for (let x = Math.floor((cam.x - vw) / g) * g; x < cam.x + vw; x += g) { ctx.moveTo(x, cam.y - vh); ctx.lineTo(x, cam.y + vh); }
-      for (let y = Math.floor((cam.y - vh) / g) * g; y < cam.y + vh; y += g) { ctx.moveTo(cam.x - vw, y); ctx.lineTo(cam.x + vw, y); }
-      ctx.stroke(); }
-      ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(0, 0, WORLD, 0, 7); ctx.stroke();
-      // food (sprites)
-      const ps = now / 300;
-      for (const f of foods) {
-        if (Math.abs(f.x - cam.x) > vw || Math.abs(f.y - cam.y) > vh) continue;
-        if (!C.glow) { ctx.fillStyle = FOODC[f.hue]; ctx.fillRect(f.x - f.r * 0.8, f.y - f.r * 0.8, f.r * 1.6, f.r * 1.6); continue; }
-        const sz = f.r * 2.5 * (1 + Math.sin(ps + f.x) * 0.15);
-        ctx.drawImage(SPR[f.hue], f.x - sz, f.y - sz, sz * 2, sz * 2);
-      }
-      // snakes
-      ctx.lineCap = "round"; ctx.lineJoin = "round";
-      for (const s of all) {
-        const w = width(s), h = s.pts[0];
-        if (Math.abs(h.x - cam.x) > vw + s.pts.length * SEG || Math.abs(h.y - cam.y) > vh + s.pts.length * SEG) continue;
-        // one path, two cheap strokes (no dashes, no shadowBlur)
-        const sk = SKIN_BY[s.skin || "hue"] || SKIN_BY.hue, n = s.pts.length;
-        ctx.beginPath(); ctx.moveTo(s.pts[n - 1].x, s.pts[n - 1].y);
-        for (let i = n - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-        if (s.boost && C.boostFx) { ctx.strokeStyle = sk.type === "hue" ? `hsla(${s.hue | 0},100%,60%,0.25)` : sk.colors[0] + "44"; ctx.lineWidth = w * 2 + 16; ctx.stroke(); }
-        if (sk.type !== "hue") { ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = w * 2 + 4; ctx.stroke(); }
-        if (sk.type === "hue") {
-          ctx.strokeStyle = `hsl(${s.hue | 0},90%,42%)`; ctx.lineWidth = w * 2; ctx.stroke();
-          ctx.strokeStyle = `hsl(${s.hue | 0},90%,58%)`; ctx.lineWidth = w * 1.1; ctx.stroke();
-        } else if (sk.type === "bands" || sk.type === "pulse") {
-          const m = sk.colors.length;
-          if (sk.type === "pulse" && C.boostFx) { const a = 0.18 + 0.14 * Math.sin(now / 220 + s.id); ctx.globalAlpha = a; ctx.strokeStyle = sk.colors[m - 1]; ctx.lineWidth = w * 2 + 10; ctx.stroke(); ctx.globalAlpha = 1; }
-          for (let j = 0; j < m; j++) { ctx.strokeStyle = sk.colors[j]; ctx.lineWidth = w * 2 * (1 - j / m); ctx.stroke(); }
-        } else {
-          const m = sk.colors.length, K = 4, an = sk.type === "anim", sh = an || sk.type === "flow" ? Math.floor(now / 70) % (K * m) : 0;
-          for (let j = 0; j < m; j++) {
-            ctx.beginPath();
-            for (let i = (j * K + sh) % (K * m) - K * m; i < n - 1; i += K * m) { const i0 = Math.max(0, i); ctx.moveTo(s.pts[i0].x, s.pts[i0].y); for (let q = i0 + 1; q <= Math.min(i + K, n - 1); q++) ctx.lineTo(s.pts[q].x, s.pts[q].y); }
-            ctx.strokeStyle = an ? `hsl(${(now / 8 + j * (360 / m)) % 360 | 0},100%,60%)` : sk.colors[j]; ctx.lineWidth = w * 2; ctx.stroke();
-          }
-        }
-        if (sk.type !== "hue") {
-          ctx.beginPath(); ctx.moveTo(s.pts[n - 1].x, s.pts[n - 1].y);
-          for (let i = n - 2; i >= 0; i--) ctx.lineTo(s.pts[i].x, s.pts[i].y);
-          ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = w * 0.45; ctx.stroke();
-          if (sk.spark && C.boostFx) {
-            ctx.fillStyle = sk.spark;
-            for (let k = 0; k < 6; k++) { const q = s.pts[((now / 25 + (k * n) / 6) % n) | 0]; const r = w * (0.25 + 0.15 * Math.sin(now / 120 + k)); ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, 7); ctx.fill(); }
-            ctx.globalAlpha = 1;
-          }
-        }
-        // eyes
-        for (const side of [-1, 1]) {
-          const ex = h.x + Math.cos(s.angle + side * 0.6) * w * 0.6, ey = h.y + Math.sin(s.angle + side * 0.6) * w * 0.6;
-          ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, w * 0.38, 0, 7); ctx.fill();
-          ctx.fillStyle = sk.eye || "#111"; ctx.beginPath(); ctx.arc(ex + Math.cos(s.angle) * w * 0.15, ey + Math.sin(s.angle) * w * 0.15, w * 0.2, 0, 7); ctx.fill();
-        }
-        if (!C.names) continue;
-        const L = label(s.bot ? `🤖 ${s.name} (bot)` : s.remote ? `👤 ${s.name}` : s.name, s.bot ? "rgba(180,190,210,0.75)" : s === me ? "#5f8" : "#ffd84a");
-        ctx.drawImage(L, h.x - L.width / 4, h.y - w - 22, L.width / 2, L.height / 2);
-      }
-      // HUD: leaderboard (redrawn ~4x/sec into a cached canvas) + minimap
-      ctx.setTransform(d, 0, 0, d, 0, 0);
-      if ((lbT -= dt) <= 0) {
-        lbT = 15;
-        const top = [...all].sort((a, b) => b.len - a.len).slice(0, 10);
-        lb.width = 194 * d; lb.height = (28 + top.length * 20) * d; const g = lb.getContext("2d")!; g.scale(d, d);
-        g.fillStyle = "rgba(10,14,30,0.55)"; g.fillRect(0, 0, 194, 28 + top.length * 20);
-        g.font = "700 13px Space Grotesk, sans-serif"; g.fillStyle = "#7cf"; g.fillText("LİDERLƏR", 14, 20);
-        g.font = "500 12px Space Grotesk, sans-serif";
-        top.forEach((s, i) => {
-          g.fillStyle = s === me ? "#5f8" : s.bot ? "rgba(180,190,210,0.7)" : "#ffd84a"; g.textAlign = "left";
-          g.fillText(`${i + 1}. ${s.bot ? "🤖 " : "👤 "}${s.name}`, 14, 42 + i * 20);
-          g.textAlign = "right"; g.fillText(String(Math.floor(s.len * 10)), 184, 42 + i * 20);
-        });
-      }
-      ctx.drawImage(lb, innerWidth - 210, 16, lb.width / d, lb.height / d);
-      if (C.minimap) {
-      const mr = 60, mx = innerWidth - 80, my = innerHeight - 80;
-      ctx.fillStyle = "rgba(10,14,30,0.6)"; ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fill();
-      ctx.strokeStyle = "rgba(255,60,100,0.6)"; ctx.lineWidth = 2; ctx.stroke();
-      for (const s of all) { ctx.fillStyle = s === me ? "#5f8" : `hsla(${s.hue},90%,60%,0.7)`; ctx.beginPath(); ctx.arc(mx + (s.pts[0].x / WORLD) * mr, my + (s.pts[0].y / WORLD) * mr, s === me ? 3.5 : 2, 0, 7); ctx.fill(); }
-      }
-
-      if (me && playing && (hudT += dt) > 10) { hudT = 0; setScore(Math.floor(me.len * 10)); }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf); supabase.removeChannel(ch); removeEventListener("resize", resize); removeEventListener("pointermove", onMove);
-      removeEventListener("pointerdown", onDown); removeEventListener("pointerup", onUp); removeEventListener("keydown", onKey); removeEventListener("keyup", onKey);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room]);
-
   const nameRef = useRef(name); nameRef.current = name;
   const has = (id: string) => owned.includes(id) || paid.includes(id);
   const [buying, setBuying] = useState(false);
@@ -451,10 +128,16 @@ export default function SnakeGame() {
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-background select-none">
-      <canvas ref={cvs} className="block touch-none" />
+      <GameCanvas room={room} config={cfg} startRef={startRef}
+        profile={() => ({ name: nameRef.current, skin: skinRef.current })}
+        onStart={() => { setState("play"); setScore(100); }}
+        onDeath={(len) => { const n = coinsRef.current + coinsFor(len); setCoins(n); setState("dead"); persistRef.current(n, ownedRef.current, skinRef.current); }}
+        onInterrupted={() => setState("menu")}
+        onScore={setScore} onCount={setOnline} onFps={setFps}
+        onStatus={setConnectionStatus} onError={setAuthMsg} />
       {getPaddleEnvironment() === "sandbox" && state !== "play" && <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 bg-accent/80 py-1 text-center text-xs text-accent-foreground">Önizləmədə ödənişlər test rejimindədir (real pul çəkilmir)</div>}
       <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl bg-card/80 px-3 py-2 text-xs text-foreground">
-        🟢 Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot
+        {connectionStatus === "online" ? "🟢" : "🟡"} Onlayn oyunçu: <b className="text-primary">{online}</b> · 👤 insan · 🤖 bot <span> · {room.toUpperCase()}{connectionStatus !== "online" ? " · Qoşulur..." : ""}</span>
       </div>
       {cfg.showFps && (
         <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-lg bg-card/60 px-2 py-1 text-xs text-foreground">FPS: <b className="text-primary">{fps}</b></div>
@@ -490,7 +173,7 @@ export default function SnakeGame() {
       {state !== "play" && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/70">
           <form
-            onSubmit={(e) => { e.preventDefault(); if (has(preview)) startRef.current(); }}
+            onSubmit={(e) => { e.preventDefault(); if (has(preview) && connectionStatus === "online") startRef.current(); }}
             className="max-h-[96vh] w-[min(94vw,460px)] overflow-y-auto rounded-3xl border border-border bg-card/85 p-5 text-center shadow-glow"
           >
             <div className="flex items-center justify-between">
@@ -523,8 +206,8 @@ export default function SnakeGame() {
               className="mt-3 w-full rounded-xl border border-input bg-background/60 px-4 py-2.5 text-center text-foreground outline-none focus:border-primary" />
 
             {has(cur.id) ? (
-              <button type="submit" className="mt-3 w-full rounded-2xl bg-accent py-4 font-display text-2xl font-bold uppercase tracking-wide text-accent-foreground shadow-glow transition hover:scale-[1.02]">
-                {state === "dead" ? "Yenidən oyna" : "Oyna"}
+              <button type="submit" disabled={connectionStatus !== "online"} className="mt-3 w-full rounded-2xl bg-accent py-4 font-display text-2xl font-bold uppercase tracking-wide text-accent-foreground shadow-glow transition hover:scale-[1.02] disabled:opacity-50">
+                {connectionStatus !== "online" ? "Qoşulur..." : state === "dead" ? "Yenidən oyna" : "Oyna"}
               </button>
             ) : PAID_SKINS[cur.id] ? (
               <button type="button" onClick={() => buyReal(cur.id)} disabled={buying}
