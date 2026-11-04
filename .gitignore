@@ -20,11 +20,6 @@ dist-ssr
 .wrangler/
 .dev.vars
 
-# Local diagnostics and browser smoke-test artifacts
-/lint-baseline.json
-/browser-menu.png
-/browser-game.png
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

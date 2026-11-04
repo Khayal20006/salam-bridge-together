@@ -3,25 +3,14 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
-  "engines": {
-    "node": ">=24.0.0"
-  },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:web": "vite dev",
-    "arena": "node server/arena.mjs",
+    "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:arena": "node scripts/test-arena.mjs",
-    "test:realtime": "node scripts/test-realtime-browser.mjs",
-    "benchmark:arena": "node scripts/benchmark-arena.mjs",
-    "benchmark:simulation": "node --expose-gc scripts/benchmark-simulation.mjs",
-    "benchmark:replication": "node --expose-gc scripts/benchmark-replication.mjs",
     "test:watch": "vitest"
   },
   "overrides": {
@@ -82,8 +71,7 @@
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
     "vite-tsconfig-paths": "^6.0.2",
-    "zod": "^3.25.76",
-    "ws": "^8.21.1"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
