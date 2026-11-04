@@ -1,5 +1,5 @@
 import js from "@eslint/js";
-import eslintConfigPrettier from "eslint-config-prettier";
+import eslintPluginPrettier from "eslint-plugin-prettier/recommended";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
@@ -36,26 +36,5 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
-  // Formatting is handled by Prettier; lint focuses on code correctness.
-  eslintConfigPrettier,
-  {
-    files: ["src/components/ui/**/*.{ts,tsx}"],
-    rules: {
-      "react-refresh/only-export-components": [
-        "warn",
-        {
-          allowConstantExport: true,
-          allowExportNames: [
-            "buttonVariants",
-            "badgeVariants",
-            "useFormField",
-            "navigationMenuTriggerStyle",
-            "sidebarMenuButtonVariants",
-            "useSidebar",
-            "toggleVariants",
-          ],
-        },
-      ],
-    },
-  },
+  eslintPluginPrettier,
 );
