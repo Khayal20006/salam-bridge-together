@@ -2,6 +2,12 @@ import type { Point } from "./engine";
 import type { Skin } from "../lib/skins";
 import { traceBodyCurve, traceBodyRange } from "./movement";
 
+// Precomputed color strings: no string allocation per frame for hue/animated skins.
+const HUE_DARK = Array.from({ length: 360 }, (_, h) => `hsl(${h},90%,42%)`);
+const HUE_LIGHT = Array.from({ length: 360 }, (_, h) => `hsl(${h},90%,64%)`);
+const RGB = Array.from({ length: 360 }, (_, h) => `hsl(${h},100%,62%)`);
+const hueIndex = (h: number) => (((h | 0) % 360) + 360) % 360;
+
 /** One continuous skin surface. Uses pooled spine points; no per-segment gradients or shadows. */
 export function drawSnakeSurface(
   ctx: CanvasRenderingContext2D,
@@ -19,7 +25,8 @@ export function drawSnakeSurface(
     first = colors[0]!,
     // Long snakes are the most expensive to stripe. Keep their surface cheap;
     // the outline, undercoat and one highlight still read well at gameplay zoom.
-    plain = low || points.length > 320;
+    plain = low,
+    long = points.length > 320;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -33,16 +40,18 @@ export function drawSnakeSurface(
   ctx.lineWidth = radius * 2 + 4;
   ctx.stroke();
   if (skin.type === "hue") {
-    ctx.strokeStyle = `hsl(${hue | 0},90%,42%)`;
+    ctx.strokeStyle = HUE_DARK[hueIndex(hue)]!;
     ctx.lineWidth = radius * 2;
     ctx.stroke();
-    ctx.strokeStyle = `hsl(${hue | 0},90%,64%)`;
+    ctx.strokeStyle = HUE_LIGHT[hueIndex(hue)]!;
     ctx.lineWidth = radius;
     ctx.stroke();
-  } else if (!plain && (skin.type === "bands" || skin.type === "pulse")) {
+  } else if (skin.type === "bands" || skin.type === "pulse") {
+    // Fixed number of full-path strokes: cost does not grow with extra pieces.
+    const beat = skin.type === "pulse" && !plain ? 0.08 * Math.sin(now / 260) : 0;
     for (let i = 0; i < colors.length; i++) {
       ctx.strokeStyle = colors[i]!;
-      ctx.lineWidth = radius * 2 * (1 - i / colors.length);
+      ctx.lineWidth = radius * 2 * Math.max(0.12, 1 - i / colors.length + (i ? beat : 0));
       ctx.stroke();
     }
   } else {
@@ -51,12 +60,13 @@ export function drawSnakeSurface(
     ctx.lineWidth = radius * 2;
     ctx.stroke();
     if (!plain) {
-      const stride = 4 * divisions,
+      // Long snakes get wider stripes so fewer sub-paths are traced.
+      const stride = (long ? 8 : 4) * divisions,
         period = stride * colors.length;
       const shift = skin.type === "stripes" ? 0 : ((now / 90) * divisions) % period;
       const color = (j: number) =>
         skin.type === "anim"
-          ? `hsl(${(now / 12 + (j * 360) / colors.length) % 360},100%,64%)`
+          ? RGB[hueIndex(now / 12 + (j * 360) / colors.length)]!
           : colors[j]!;
       ctx.lineCap = "butt";
       for (let j = 0; j < colors.length; j++) {
@@ -81,7 +91,7 @@ export function drawSnakeSurface(
   // A few shared strokes give volume without allocating a gradient for every body piece.
   ctx.beginPath();
   traceBodyCurve(ctx, points);
-  if (!plain) {
+  if (!plain && !long) {
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = radius * 1.3;
     ctx.stroke();
