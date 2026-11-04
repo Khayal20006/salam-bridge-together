@@ -108,7 +108,12 @@ export class ClientWorld {
   }
   private predict(now: number): void {
     if (!this.predicted) return;
-    let dt = Math.min(0.12, Math.max(0, Math.min(now, this.received + 250) - this.last) / 1000);
+    let dt =
+      Math.min(
+        0.12,
+        Math.max(0, Math.min(now, this.received + this.playback.predictionWindow) - this.last) /
+          1000,
+      ) * this.playback.clockRate;
     this.last = now;
     const p = this.local;
     p.boost = this.boost && p.len > 12;

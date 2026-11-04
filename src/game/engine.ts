@@ -1,3 +1,4 @@
+import { contactTime, resolveContacts, type Contact } from "./collision.ts";
 import { followClassicBody } from "./classic-body.ts";
 import { botGoal, botHeading, type BotMemory, type Obstacle } from "./bot-navigation.ts";
 import { SpatialGrid } from "./spatial-grid.ts";
@@ -106,6 +107,8 @@ export function segmentsDistanceSquared(a: Point, b: Point, c: Point, d: Point):
   );
 }
 
+type MovingBody = Obstacle & { oldA: Point; oldB: Point };
+
 export class Arena {
   readonly snakes = new Map<string, Snake>();
   readonly foods = new Map<number, Food>();
@@ -117,17 +120,15 @@ export class Arena {
   private foodSnapshots = new WeakMap<Food, Food>();
   private foodGrid = new SpatialGrid<Food>(120);
   private navigationGrid = new SpatialGrid<Obstacle>(120);
-  private bodyGrid = new SpatialGrid<Obstacle>(100);
+  private bodyGrid = new SpatialGrid<MovingBody>(100);
   private foodCandidates = new Set<Food>();
   private navigationCandidates = new Set<Obstacle>();
-  private bodyCandidates = new Set<Obstacle>();
+  private bodyCandidates = new Set<MovingBody>();
   private navigationBodies: Obstacle[] = [];
-  private collisionBodies: Obstacle[] = [];
+  private collisionBodies: MovingBody[] = [];
+  private previousBodies = new Map<string, Point[]>();
   private previousHeads = new Map<string, Point>();
   private collisionWidths = new Map<string, number>();
-  private relativeStart = { x: 0, y: 0 };
-  private relativeEnd = { x: 0, y: 0 };
-  private origin = { x: 0, y: 0 };
   private random: () => number;
   constructor(random: () => number = Math.random, initialize = true) {
     this.random = random;
@@ -232,6 +233,7 @@ export class Arena {
     this.tick++;
     const previous = this.previousHeads;
     previous.clear();
+    this.previousBodies.clear();
     const foodGrid = this.foodGrid;
     foodGrid.reset();
     for (const f of this.foods.values()) foodGrid.insert(f.x, f.y, f.x, f.y, f);
@@ -265,6 +267,7 @@ export class Arena {
     for (const s of this.snakes.values()) {
       const head = s.pts[0]!;
       previous.set(s.id, head);
+      this.previousBodies.set(s.id, s.pts);
       if (s.bot && navigation) {
         const nearbyFood = foodGrid.query(
           head.x - 450,
@@ -293,6 +296,7 @@ export class Arena {
     }
     // All deaths are decided from the same tick, then applied together.
     const dead = new Set<string>();
+    const contacts: Contact[] = [];
     const bodies = this.bodyGrid;
     bodies.reset();
     const widths = this.collisionWidths;
@@ -306,19 +310,24 @@ export class Arena {
       for (let i = 2; i < s.pts.length; i++) {
         const a = s.pts[i - 1]!,
           b = s.pts[i]!;
+        const oldPoints = this.previousBodies.get(s.id)!;
+        const oldA = oldPoints[Math.min(i - 1, oldPoints.length - 1)]!;
+        const oldB = oldPoints[Math.min(i, oldPoints.length - 1)]!;
         const body =
           this.collisionBodies[bodyCount] ??
-          (this.collisionBodies[bodyCount] = { id: s.id, a, b, radius });
+          (this.collisionBodies[bodyCount] = { id: s.id, a, b, radius, oldA, oldB });
         body.id = s.id;
         body.a = a;
         body.b = b;
         body.radius = radius;
+        body.oldA = oldA;
+        body.oldB = oldB;
         bodyCount++;
         bodies.insert(
-          Math.min(a.x, b.x) - radius,
-          Math.min(a.y, b.y) - radius,
-          Math.max(a.x, b.x) + radius,
-          Math.max(a.y, b.y) + radius,
+          Math.min(a.x, b.x, oldA.x, oldB.x) - radius,
+          Math.min(a.y, b.y, oldA.y, oldB.y) - radius,
+          Math.max(a.x, b.x, oldA.x, oldB.x) + radius,
+          Math.max(a.y, b.y, oldA.y, oldB.y) + radius,
           body,
         );
       }
@@ -336,18 +345,17 @@ export class Arena {
           a = previous.get(other.id)!,
           b = other.pts[0]!;
         if (isSpawnProtected(other, this.tick)) continue;
-        this.relativeStart.x = old.x - a.x;
-        this.relativeStart.y = old.y - a.y;
-        this.relativeEnd.x = head.x - b.x;
-        this.relativeEnd.y = head.y - b.y;
-        // Relative swept motion prevents head-on tunnelling at boost speed.
-        if (
-          pointSegmentDistanceSquared(this.origin, this.relativeStart, this.relativeEnd) <
-          (radius + widths.get(other.id)! * COLLISION_SCALE) ** 2
-        ) {
-          dead.add(s.id);
-          dead.add(other.id);
-        }
+        const time = contactTime(
+          old,
+          head,
+          a,
+          b,
+          a,
+          b,
+          radius + widths.get(other.id)! * COLLISION_SCALE,
+        );
+        if (Number.isFinite(time))
+          contacts.push({ time, victim: s.id, obstacle: other.id, both: true });
       }
     }
     for (const s of snakes) {
@@ -362,15 +370,21 @@ export class Arena {
         Math.max(old.y, head.y) + radius,
         this.bodyCandidates,
       )) {
-        if (
-          body.id !== s.id &&
-          segmentsDistanceSquared(old, head, body.a, body.b) < (radius + body.radius) ** 2
-        ) {
-          dead.add(s.id);
-          break;
-        }
+        if (body.id === s.id) continue;
+        const time = contactTime(
+          old,
+          head,
+          body.oldA,
+          body.a,
+          body.oldB,
+          body.b,
+          radius + body.radius,
+        );
+        if (Number.isFinite(time))
+          contacts.push({ time, victim: s.id, obstacle: body.id, both: false });
       }
     }
+    resolveContacts(contacts, dead);
     const foodTargets = new Map<
       number,
       { food: Food; snake: Snake; mouth: Point; distance: number }

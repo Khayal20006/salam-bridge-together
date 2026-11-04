@@ -46,6 +46,9 @@ const server = createServer((req, res) => {
     res.end(
       JSON.stringify({
         ok: true,
+        version: process.env.RENDER_GIT_COMMIT || "local",
+        simulationHz: 1000 / STEP_MS,
+        snapshotHz: 20,
         rooms: rooms.size,
         players: [...rooms.values()].reduce((n, r) => n + r.peers.size, 0),
       }),
