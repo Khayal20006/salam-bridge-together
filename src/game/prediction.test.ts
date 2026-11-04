@@ -20,6 +20,23 @@ const player = (): Snake => ({
 });
 
 describe("local movement prediction", () => {
+  it("keeps the current turn rate after an older heading arrives", () => {
+    const prediction = new LocalPrediction(), shown = player();
+    prediction.reconcile(player(), 0);
+    prediction.steer(Math.PI / 2, false);
+    prediction.renderInto(shown, 96);
+    const angle = shown.angle;
+    prediction.reconcile(player(), 96);
+    prediction.renderInto(shown, 112);
+    expect(shown.angle - angle).toBeCloseTo(5.4 * 0.016);
+    // Continue through multiple delayed packets: the head reaches the user's
+    // target instead of repeatedly restarting its turn from authority's angle.
+    for (let at = 192; at <= 480; at += 96) {
+      prediction.reconcile(player(), at);
+      prediction.renderInto(shown, at);
+    }
+    expect(shown.angle).toBeCloseTo(Math.PI / 2);
+  });
   it("keeps authority bodies immutable across repeated pooled reconciliations and growth", () => {
     const prediction = new LocalPrediction(),
       source = player(),

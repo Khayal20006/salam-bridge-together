@@ -7,12 +7,12 @@ import {
   BOOST_SPEED,
   type Snake,
 } from "./engine";
-import { BodyTrail, angleDelta } from "./movement";
+import { angleDelta } from "./movement";
+import { followClassicBody } from "./classic-body";
 
 /** Predict only the local player's appearance. Never simulates bots, food or deaths. */
 export class LocalPrediction {
   private snake: Snake | undefined;
-  private trail: BodyTrail | undefined;
   private target: number | undefined;
   private boost = false;
   private sent = new Map<number, number>();
@@ -26,7 +26,6 @@ export class LocalPrediction {
 
   clear(): void {
     this.snake = undefined;
-    this.trail = undefined;
     this.target = undefined;
     this.sent.clear();
     this.lead = 0;
@@ -61,7 +60,8 @@ export class LocalPrediction {
       this.lead = this.lead ? this.lead + (measured - this.lead) * 0.08 : measured;
     }
     for (const seq of this.sent.keys()) if (seq <= authority.inputSeq) this.sent.delete(seq);
-    if (sameLife && this.snake && this.trail) {
+    const localAngle = this.snake?.angle;
+    if (sameLife && this.snake) {
       const points = this.snake.pts;
       Object.assign(this.snake, authority, { pts: points });
       for (let i = 0; i < authority.pts.length; i++) {
@@ -70,13 +70,14 @@ export class LocalPrediction {
         p.y = authority.pts[i]!.y;
       }
       points.length = authority.pts.length;
-      this.trail.reset(points);
     } else {
       this.snake = cloneSnake(authority);
-      this.trail = new BodyTrail(this.snake.pts);
     }
     this.receivedAt = this.clock = at;
     if (sameLife && this.target !== undefined) this.advance(this.lead / 1000);
+    // Authority reports an older input. Keep the heading already reached with
+    // current local input so each packet cannot rewind the direction of travel.
+    if (sameLife && localAngle !== undefined) this.snake.angle = localAngle;
     const head = this.snake.pts[0]!;
     const dx = this.visual.x - head.x,
       dy = this.visual.y - head.y;
@@ -102,7 +103,7 @@ export class LocalPrediction {
     }
   }
   private advance(seconds: number): void {
-    if (!this.snake || !this.trail || seconds <= 0) return;
+    if (!this.snake || seconds <= 0) return;
     if (this.target !== undefined) {
       this.snake.target = this.target;
       this.snake.boost = this.boost;
@@ -111,14 +112,13 @@ export class LocalPrediction {
     while (remaining > 0.000001) {
       const step = Math.min(1 / 60, remaining);
       const head = advanceHead(this.snake, step);
-      this.snake.pts = this.trail.advance(head, segmentCount(this.snake.len), SEG, this.snake.pts);
+      this.snake.pts = followClassicBody(head, this.snake.pts, segmentCount(this.snake.len), SEG, this.snake.pts);
       remaining -= step;
     }
   }
   renderInto(shown: Snake, now: number): boolean {
     if (
       !this.snake ||
-      !this.trail ||
       shown.id !== this.snake.id ||
       shown.spawnTick !== this.snake.spawnTick
     )

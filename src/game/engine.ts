@@ -1,4 +1,4 @@
-import { BodyTrail, smoothTurn } from "./movement.ts";
+import { followClassicBody } from "./classic-body.ts";
 import { botGoal, botHeading, type BotMemory, type Obstacle } from "./bot-navigation.ts";
 import { SpatialGrid } from "./spatial-grid.ts";
 
@@ -113,7 +113,6 @@ export class Arena {
   tick = 0;
   private foodId = 0;
   private inputs = new Map<string, number>();
-  private trails = new Map<string, BodyTrail>();
   private botMemory = new Map<string, BotMemory>();
   private foodSnapshots = new WeakMap<Food, Food>();
   private foodGrid = new SpatialGrid<Food>(120);
@@ -192,7 +191,6 @@ export class Arena {
         skin,
       };
       this.snakes.set(id, s);
-      this.trails.set(id, new BodyTrail(s.pts));
       this.inputs.delete(id);
       return s;
     }
@@ -206,7 +204,6 @@ export class Arena {
   leave(id: string): void {
     this.snakes.delete(id);
     this.inputs.delete(id);
-    this.trails.delete(id);
     this.botMemory.delete(id);
   }
   input(id: string, value: Input): void {
@@ -292,12 +289,7 @@ export class Arena {
         s.len = Math.max(10, s.len - 0.16);
         if (this.tick % 5 === 0) this.food({ ...s.pts.at(-1)! }, 0.5);
       }
-      let trail = this.trails.get(s.id);
-      if (!trail) {
-        trail = new BodyTrail(s.pts);
-        this.trails.set(s.id, trail);
-      }
-      s.pts = trail.advance(nextHead, segmentCount(s.len), SEG);
+      s.pts = followClassicBody(nextHead, s.pts, segmentCount(s.len), SEG);
     }
     // All deaths are decided from the same tick, then applied together.
     const dead = new Set<string>();
@@ -472,13 +464,11 @@ export class Arena {
     this.snakes.clear();
     this.foods.clear();
     this.inputs.clear();
-    this.trails.clear();
     this.botMemory.clear();
     this.foodSnapshots = new WeakMap();
     for (const s of snapshot.snakes) {
       this.snakes.set(s.id, cloneSnake(s));
       if (s.inputSeq !== undefined) this.inputs.set(s.id, s.inputSeq);
-      this.trails.set(s.id, new BodyTrail(s.pts));
     }
     this.foodId = 0;
     for (const f of snapshot.foods) {

@@ -90,12 +90,10 @@ export default function GameCanvas(props: Props) {
     const mouse = { x: innerWidth / 2 + 100, y: innerHeight / 2, down: false };
     const cam = new SmoothCamera();
     const steeringAngle = () => {
-      const snake = rendered.get(self),
-        head = snake?.pts[0];
-      const x = innerWidth / 2 + ((head?.x ?? cam.x) - cam.x) * cam.z;
-      const y = innerHeight / 2 + ((head?.y ?? cam.y) - cam.y) * cam.z;
-      const dx = mouse.x - x,
-        dy = mouse.y - y;
+      const snake = rendered.get(self);
+      // Match classic controls: camera lag must not change the target angle.
+      const dx = mouse.x - innerWidth / 2,
+        dy = mouse.y - innerHeight / 2;
       const deadzone = snake ? snakeWidth(snake) * cam.z + 6 : 12;
       return dx * dx + dy * dy < deadzone * deadzone ? (snake?.angle ?? 0) : Math.atan2(dy, dx);
     };
