@@ -48,7 +48,7 @@ export class ArenaClient {
     room: string,
     private events: ArenaEvents,
     base = import.meta.env["VITE_ARENA_URL"] ||
-      "wss://salam-bridge-together.onrender.com/arena/{room}",
+      "wss://salam-bridge-together.fly.dev/arena/{room}",
   ) {
     this.room = room;
     this.base = base;

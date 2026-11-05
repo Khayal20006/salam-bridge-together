@@ -27,7 +27,7 @@ npm run dev
 
 ## Shared arena and Canvas renderer
 
-Use Node.js 24 or newer. Run `npm run arena` for the authoritative WebSocket server and `npm run dev` for the frontend. For local multiplayer set `VITE_ARENA_URL=ws://127.0.0.1:8787/arena/{room}` in `.env.local` before starting Vite. The default endpoint is `wss://salam-bridge-together.onrender.com/arena/{room}`. A base `/arena` URL and a concrete room URL are also accepted.
+Use Node.js 24 or newer. Run `npm run arena` for the authoritative WebSocket server and `npm run dev` for the frontend. For local multiplayer set `VITE_ARENA_URL=ws://127.0.0.1:8787/arena/{room}` in `.env.local` before starting Vite. The default endpoint is `wss://salam-bridge-together.fly.dev/arena/{room}`. A base `/arena` URL and a concrete room URL are also accepted.
 
 Render: install dependencies, run `npm run arena`, and set Node 24+. The server reads Render's `PORT` and binds to `0.0.0.0`. Supabase public configuration is needed on the server to verify paid skin ownership; never put a service-role credential in a VITE variable. Deploy the frontend separately through Lovable Publish.
 
