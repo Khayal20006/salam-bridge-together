@@ -1,35 +1,39 @@
-# Replace this with your unique Fly app name (or use fly launch --name ...).
-app = "neonworm-arena"
-primary_region = "fra"
-kill_signal = "SIGTERM"
-kill_timeout = "10s"
+# fly.toml app configuration file generated for salam-bridge-together on 2026-11-05T08:24:17Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'salam-bridge-together'
+primary_region = 'fra'
+kill_signal = 'SIGTERM'
+kill_timeout = '10s'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
+
+[deploy]
+  strategy = 'immediate'
 
 [env]
-  NODE_ENV = "production"
-  PORT = "8080"
-  ARENA_HOST = "0.0.0.0"
-
-# Stop the previous process before starting the new world during deployments.
-[deploy]
-  strategy = "immediate"
+  ARENA_HOST = '0.0.0.0'
+  NODE_ENV = 'production'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
 
   [[http_service.checks]]
-    method = "GET"
-    path = "/health"
-    interval = "15s"
-    timeout = "5s"
-    grace_period = "15s"
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '15s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  cpu_kind = "shared"
+  memory = '512mb'
+  cpu_kind = 'shared'
   cpus = 1
-  memory = "512mb"
+  memory_mb = 512
