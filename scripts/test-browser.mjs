@@ -79,7 +79,7 @@ const inject = `(() => {
  const d=window.__diag={sockets:[],frames:[],tasks:[],states:[],sent:[]};
  const Native=window.WebSocket;
  window.WebSocket=class extends Native {
-  constructor(...args){if(String(args[0]).includes("salam-bridge-together.onrender.com/arena/"))args[0]=String(args[0]).replace("wss://salam-bridge-together.onrender.com",${JSON.stringify(ARENA_URL)});super(...args); const info={url:String(args[0]),closed:[]}; d.sockets.push(info);if(info.url.includes("/arena/"))(window.__arenaSockets??=[]).push(this);
+  constructor(...args){if(String(args[0]).includes("salam-bridge-together.fly.dev/arena/"))args[0]=String(args[0]).replace("wss://salam-bridge-together.fly.dev",${JSON.stringify(ARENA_URL)});super(...args); const info={url:String(args[0]),closed:[]}; d.sockets.push(info);if(info.url.includes("/arena/"))(window.__arenaSockets??=[]).push(this);
    this.addEventListener('close',e=>info.closed.push({code:e.code,reason:e.reason}));
    this.addEventListener('message',e=>{try{const m=JSON.parse(e.data);if(m.type==='state')d.states.push({at:performance.now(),tick:m.state.tick,base:m.state.base,count:m.count,bytes:e.data.length,snakes:m.state.snakes.map(s=>({id:s[0],bot:s[6],head:s[8].slice(0,2)}))});}catch{}});
   }
