@@ -1,0 +1,23 @@
+# Allow only the authoritative arena's build inputs into the Docker context.
+**
+!Dockerfile
+!.dockerignore
+!deploy/
+!deploy/arena/
+!deploy/arena/package.json
+!deploy/arena/package-lock.json
+!server/
+!server/arena.mjs
+!src/
+!src/game/
+!src/game/engine.ts
+!src/game/collision.ts
+!src/game/classic-body.ts
+!src/game/bot-navigation.ts
+!src/game/spatial-grid.ts
+!src/game/movement.ts
+!src/game/protocol.ts
+!src/game/snapshot-index.ts
+!src/game/view-snapshot.ts
+!src/lib/
+!src/lib/skins.ts

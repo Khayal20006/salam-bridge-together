@@ -1,0 +1,11 @@
+{
+  "name": "neonworm-arena",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
+    "ws": "8.21.1"
+  }
+}
